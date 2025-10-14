@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_500">#7E57C2</color>   <!-- light tile / primary accent -->
+    <color name="orange_500">#FF9800</color>   <!-- dark tile / accent -->
+    <color name="md_sys_primary">#6750A4</color>
+    <color name="md_sys_secondary">#03DAC6</color>
+    <color name="bg_light">#FFFFFF</color>
+    <color name="bg_dark">#121212</color>
+    <color name="text_on_primary">#FFFFFF</color>
+</resources>
