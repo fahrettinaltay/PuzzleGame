@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PuzzleGame" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/md_sys_primary</item>
-        <item name="colorSecondary">@color/md_sys_secondary</item>
-        <item name="android:statusBarColor">?attr/colorPrimary</item>
-        <item name="android:windowBackground">@color/bg_light</item>
-        <item name="android:textColorPrimary">#212121</item>
+    <!--
+    Base application theme.
+    This theme is applied to the splash screen and is the entry point theme.
+    The actual theme is controlled by Jetpack Compose in PuzzleGameTheme.
+    -->
+    <style name="Theme.PuzzleGame" parent="Theme.AppCompat.NoActionBar">
+        <!-- Set the background color for the splash screen or initial window -->
+        <item name="android:windowBackground">@android:color/white</item>
     </style>
 </resources>

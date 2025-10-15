@@ -1,45 +1,175 @@
 package com.mey.puzzlegame
 
 import android.content.Intent
-import android.content.SharedPreferences
 import android.os.Bundle
-import android.widget.ToggleButton
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
-import com.google.android.material.button.MaterialButton
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
-class StartActivity : AppCompatActivity() {
+// ViewModel for Start Screen
+class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
 
-    private lateinit var prefs: SharedPreferences
+    val isDarkTheme = dataStore.isDarkTheme
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        // apply saved theme BEFORE setContentView
-        val dark = prefs.getBoolean("dark", false)
-        AppCompatDelegate.setDefaultNightMode(
-            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
-
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_start)
-
-        val toggle = findViewById<ToggleButton>(R.id.toggleTheme)
-        toggle.isChecked = prefs.getBoolean("dark", false)
-        toggle.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("dark", isChecked).apply()
-            AppCompatDelegate.setDefaultNightMode(
-                if (isChecked) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-            )
-            // recreate activity so theme takes effect everywhere
-            recreate()
-        }
-
-        findViewById<MaterialButton>(R.id.btnEasy).setOnClickListener { startPuzzle(3) }
-        findViewById<MaterialButton>(R.id.btnMedium).setOnClickListener { startPuzzle(4) }
-        findViewById<MaterialButton>(R.id.btnHard).setOnClickListener { startPuzzle(5) }
+    fun getHighScore(size: Int): StateFlow<Int> {
+        return dataStore.getHighScore(size)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     }
 
-    private fun startPuzzle(size: Int) {
-        startActivity(Intent(this, PuzzleActivity::class.java).putExtra("SIZE", size))
+    fun onThemeChange() {
+        viewModelScope.launch {
+            dataStore.toggleTheme()
+        }
+    }
+}
+
+// Factory to provide DataStore to ViewModel
+class StartViewModelFactory(private val dataStore: SettingsDataStore) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(StartViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return StartViewModel(dataStore) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+
+class StartActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val dataStore = SettingsDataStore(this)
+
+        setContent {
+            val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+
+            PuzzleGameTheme(darkTheme = isDark) {
+                StartScreen(
+                    viewModelFactory = StartViewModelFactory(dataStore),
+                    onStartPuzzle = { size ->
+                        startActivity(Intent(this, PuzzleActivity::class.java).putExtra("SIZE", size))
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StartScreen(
+    viewModelFactory: StartViewModelFactory,
+    onStartPuzzle: (Int) -> Unit,
+    viewModel: StartViewModel = viewModel(factory = viewModelFactory)
+) {
+    val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("🧩 Puzzle Game", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Zorluk seviyesi seçin", style = MaterialTheme.typography.titleMedium)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isDarkTheme) "🌙" else "☀️", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(
+                    checked = isDarkTheme,
+                    onCheckedChange = { viewModel.onThemeChange() }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                val easyHighScore by viewModel.getHighScore(3).collectAsState()
+                val mediumHighScore by viewModel.getHighScore(4).collectAsState()
+                val hardHighScore by viewModel.getHighScore(5).collectAsState()
+
+                DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, onClick = { onStartPuzzle(3) })
+                DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, onClick = { onStartPuzzle(4) })
+                DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, onClick = { onStartPuzzle(5) })
+            }
+        }
+    }
+}
+
+@Composable
+fun DifficultyButton(text: String, score: Int, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            if (score > 0) {
+                Text("Rekor: $score", fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun StartScreenPreview() {
+    PuzzleGameTheme {
+        // Dummy factory for preview
+        val dummyDataStore = SettingsDataStore(LocalContext.current)
+        StartScreen(viewModelFactory = StartViewModelFactory(dummyDataStore), onStartPuzzle = {})
     }
 }
