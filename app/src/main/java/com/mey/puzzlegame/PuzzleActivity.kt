@@ -4,35 +4,18 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -241,30 +224,62 @@ fun PuzzleScreen(
 
 @Composable
 fun PuzzleBoard(viewModel: PuzzleViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        viewModel.values.forEachIndexed { r, row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                row.forEachIndexed { c, value ->
-                    PuzzleTile(
-                        modifier = Modifier.weight(1f),
-                        value = value,
-                        onClick = { viewModel.onTileClick(r, c) }
-                    )
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(8.dp))
+    ) {
+        val tileSize = maxWidth / viewModel.size
+
+        // Create a map of number to its current position for quick lookup
+        val tilePositions = remember(viewModel.values) {
+            Array(viewModel.size * viewModel.size) { 0 to 0 }.also { array ->
+                viewModel.values.forEachIndexed { r, row ->
+                    row.forEachIndexed { c, number ->
+                        array[number] = r to c
+                    }
                 }
             }
         }
+
+        // We render tiles from 1 to size*size - 1. Tile 0 is the empty space.
+        (1 until viewModel.size * viewModel.size).forEach { number ->
+            val (r, c) = tilePositions[number]
+
+            val animatedX by animateDpAsState(
+                targetValue = tileSize * c,
+                animationSpec = tween(durationMillis = 300),
+                label = "tile_x_$number"
+            )
+            val animatedY by animateDpAsState(
+                targetValue = tileSize * r,
+                animationSpec = tween(durationMillis = 300),
+                label = "tile_y_$number"
+            )
+
+            PuzzleTile(
+                modifier = Modifier
+                    .offset(x = animatedX, y = animatedY)
+                    .width(tileSize)
+                    .height(tileSize)
+                    .padding(4.dp), // Add padding for spacing between tiles
+                value = number,
+                onClick = { viewModel.onTileClick(r, c) }
+            )
+        }
     }
 }
+
 
 @Composable
 fun PuzzleTile(modifier: Modifier = Modifier, value: Int, onClick: () -> Unit) {
     val isVisible = value != 0
     val tileColor = MaterialTheme.colorScheme.primary
-    val emptyColor = MaterialTheme.colorScheme.background.copy(alpha = 0f)
+    val emptyColor = Color.Transparent // Empty space should be fully transparent
 
     Card(
         modifier = modifier
-            .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = isVisible, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
