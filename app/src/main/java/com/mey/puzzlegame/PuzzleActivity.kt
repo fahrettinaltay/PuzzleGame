@@ -90,31 +90,28 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     private fun shuffleBoard() {
         initValues()
         val shuffleMoves = size * size * 100
-        var lastMove: Pair<Int, Int>? = null
         repeat(shuffleMoves) {
-            val possibleMoves = mutableListOf<Pair<Int, Int>>().apply {
-                if (emptyRow > 0 && (lastMove == null || lastMove != emptyRow - 1 to emptyCol)) add(emptyRow - 1 to emptyCol)
-                if (emptyRow < size - 1 && (lastMove == null || lastMove != emptyRow + 1 to emptyCol)) add(emptyRow + 1 to emptyCol)
-                if (emptyCol > 0 && (lastMove == null || lastMove != emptyRow to emptyCol - 1)) add(emptyRow to emptyCol - 1)
-                if (emptyCol < size - 1 && (lastMove == null || lastMove != emptyRow to emptyCol + 1)) add(emptyRow to emptyCol + 1)
-            }
-            val (nr, nc) = possibleMoves.ifEmpty {
-                buildList {
-                    if (emptyRow > 0) add(emptyRow - 1 to emptyCol)
-                    if (emptyRow < size - 1) add(emptyRow + 1 to emptyCol)
-                    if (emptyCol > 0) add(emptyRow to emptyCol - 1)
-                    if (emptyCol < size - 1) add(emptyRow to emptyCol + 1)
-                }
-            }.random()
-            swap(emptyRow, emptyCol, nr, nc)
-            lastMove = emptyRow to emptyCol
-            emptyRow = nr
-            emptyCol = nc
+            val neighbors = mutableListOf<Pair<Int, Int>>()
+            if (emptyRow > 0) neighbors.add(emptyRow - 1 to emptyCol)
+            if (emptyRow < size - 1) neighbors.add(emptyRow + 1 to emptyCol)
+            if (emptyCol > 0) neighbors.add(emptyRow to emptyCol - 1)
+            if (emptyCol < size - 1) neighbors.add(emptyRow to emptyCol + 1)
+
+            val (randomRow, randomCol) = neighbors.random()
+
+            // Swap the empty tile with the random neighbor
+            swap(emptyRow, emptyCol, randomRow, randomCol)
+
+            // Update the new empty tile position
+            emptyRow = randomRow
+            emptyCol = randomCol
         }
+
+        // If the board happens to be solved after shuffling, shuffle again.
         if (checkIfComplete()) {
             shuffleBoard()
         }
-        values = values.copyOf()
+        values = values.copyOf() // Trigger UI update
     }
 
     fun onTileClick(r: Int, c: Int) {
