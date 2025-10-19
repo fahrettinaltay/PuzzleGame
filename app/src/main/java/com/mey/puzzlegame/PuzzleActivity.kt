@@ -1,7 +1,9 @@
 package com.mey.puzzlegame
 
 import android.content.Intent
+//import android.media.MediaPlayer
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateDpAsState
@@ -16,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -26,6 +30,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -192,6 +197,55 @@ fun PuzzleScreen(
         viewModel.setup(size)
     }
 
+    // --- Sound & Haptic Feedback ---
+    val context = LocalContext.current
+    val view = LocalView.current
+
+//    // Remember MediaPlayer instances, handling cases where sound files might not exist.
+//    val clickSoundPlayer = remember {
+//        try {
+//            MediaPlayer.create(context, R.raw.tile_click)
+//        } catch (e: Exception) {
+//            null
+//        }
+//    }
+//    val winSoundPlayer = remember {
+//        try {
+//            MediaPlayer.create(context, R.raw.win_sound)
+//        } catch (e: Exception) {
+//            null
+//        }
+//    }
+//
+//    // Release MediaPlayer resources when the composable is disposed.
+//    DisposableEffect(Unit) {
+//        onDispose {
+//            clickSoundPlayer?.release()
+//            winSoundPlayer?.release()
+//        }
+//    }
+
+    // Effect for tile move feedback (vibration only for now).
+    LaunchedEffect(viewModel) {
+        snapshotFlow { viewModel.moves }
+            .drop(1) // Ignore the initial state on composition.
+            .collect { 
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                //clickSoundPlayer?.start()
+            }
+    }
+
+    // Effect for win feedback (vibration only for now).
+    LaunchedEffect(viewModel.isComplete) {
+        if (viewModel.isComplete) {
+            // A short delay to allow the last tile animation to finish.
+            delay(300)
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            //winSoundPlayer?.start()
+        }
+    }
+
+
     if (viewModel.isComplete) {
         WinDialog(
             isNewHighScore = viewModel.isNewHighScore,
@@ -237,7 +291,9 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
             Array(viewModel.size * viewModel.size) { 0 to 0 }.also { array ->
                 viewModel.values.forEachIndexed { r, row ->
                     row.forEachIndexed { c, number ->
-                        array[number] = r to c
+                        if (number >= 0 && number < array.size) { // Safety check
+                            array[number] = r to c
+                        }
                     }
                 }
             }
