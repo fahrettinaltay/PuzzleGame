@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!--
-    Base application theme for night mode.
-    This theme is applied to the splash screen and is the entry point theme.
-    The actual theme is controlled by Jetpack Compose in PuzzleGameTheme.
-    -->
-    <style name="Theme.PuzzleGame" parent="android:Theme.DeviceDefault.NoActionBar">
-        <!-- Set the background color for the splash screen or initial window -->
+    <!-- Base application theme for night mode. -->
+    <style name="Theme.PuzzleGame" parent="android:Theme.Material">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">@android:color/black</item>
     </style>
 </resources>

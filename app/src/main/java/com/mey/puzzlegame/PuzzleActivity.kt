@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -169,7 +170,9 @@ class PuzzleViewModelFactory(private val dataStore: SettingsDataStore) : ViewMod
 }
 
 class PuzzleActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
         val size = intent.getIntExtra("SIZE", 3).coerceAtLeast(3)
         val dataStore = SettingsDataStore(this)
@@ -260,7 +263,8 @@ fun PuzzleScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(16.dp)
+                .systemBarsPadding(), // Add padding for system bars for edge-to-edge
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
