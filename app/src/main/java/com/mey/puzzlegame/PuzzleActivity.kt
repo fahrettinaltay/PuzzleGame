@@ -47,7 +47,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
 
     private var emptyRow by mutableStateOf(0)
     private var emptyCol by mutableStateOf(0)
-    private var startTime by mutableStateOf(0L)
+    var startTime by mutableStateOf(0L)
 
     fun setup(puzzleSize: Int) {
         size = puzzleSize
@@ -119,7 +119,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             }
         }
     }
-    
+
     private fun calculateAndSaveScore() {
         viewModelScope.launch {
             val timeElapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
@@ -200,36 +200,31 @@ fun PuzzleScreen(
         viewModel.setup(size)
     }
 
+    // --- Timer State and Logic ---
+    var time by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.startTime) {
+        if (!viewModel.isComplete && viewModel.startTime > 0L) {
+            while (true) {
+                time = (System.currentTimeMillis() - viewModel.startTime) / 1000
+                delay(1000)
+            }
+        }
+    }
+
+    val formattedTime = remember(time) {
+        val minutes = time / 60
+        val seconds = time % 60
+        "%02d:%02d".format(minutes, seconds)
+    }
+
     // --- Sound & Haptic Feedback ---
     val context = LocalContext.current
     val view = LocalView.current
 
-//    // Remember MediaPlayer instances, handling cases where sound files might not exist.
-//    val clickSoundPlayer = remember {
-//        try {
-//            MediaPlayer.create(context, R.raw.tile_click)
-//        } catch (e: Exception) {
-//            null
-//        }
-//    }
-//    val winSoundPlayer = remember {
-//        try {
-//            MediaPlayer.create(context, R.raw.win_sound)
-//        } catch (e: Exception) {
-//            null
-//        }
-//    }
-//
-//    // Release MediaPlayer resources when the composable is disposed.
-//    DisposableEffect(Unit) {
-//        onDispose {
-//            clickSoundPlayer?.release()
-//            winSoundPlayer?.release()
-//        }
-//    }
+    // ... (rest of the sound/haptic code remains the same)
 
-    // Effect for tile move feedback (vibration only for now).
-    LaunchedEffect(viewModel) {
+    LaunchedEffect(viewModel.moves) {
         snapshotFlow { viewModel.moves }
             .drop(1) // Ignore the initial state on composition.
             .collect { 
@@ -238,10 +233,8 @@ fun PuzzleScreen(
             }
     }
 
-    // Effect for win feedback (vibration only for now).
     LaunchedEffect(viewModel.isComplete) {
         if (viewModel.isComplete) {
-            // A short delay to allow the last tile animation to finish.
             delay(300)
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             //winSoundPlayer?.start()
@@ -268,7 +261,16 @@ fun PuzzleScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Hamle: ${viewModel.moves}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            // --- Updated Top Row with Timer ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Hamle: ${viewModel.moves}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Süre: $formattedTime", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             PuzzleBoard(viewModel)
             Spacer(modifier = Modifier.height(16.dp))
@@ -279,6 +281,9 @@ fun PuzzleScreen(
         }
     }
 }
+
+// ... (Rest of the file remains the same)
+
 
 @Composable
 fun PuzzleBoard(viewModel: PuzzleViewModel) {
