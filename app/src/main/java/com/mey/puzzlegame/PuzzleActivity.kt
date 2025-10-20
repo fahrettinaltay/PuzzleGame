@@ -1,7 +1,7 @@
 package com.mey.puzzlegame
 
 import android.content.Intent
-//import android.media.MediaPlayer
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
@@ -222,22 +222,46 @@ fun PuzzleScreen(
     val context = LocalContext.current
     val view = LocalView.current
 
-    // ... (rest of the sound/haptic code remains the same)
-
-    LaunchedEffect(viewModel.moves) {
-        snapshotFlow { viewModel.moves }
-            .drop(1) // Ignore the initial state on composition.
-            .collect { 
-                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                //clickSoundPlayer?.start()
-            }
+    // Remember MediaPlayer instances, handling cases where sound files might not exist.
+    val clickSoundPlayer = remember {
+        try {
+            MediaPlayer.create(context, R.raw.tile_click)
+        } catch (e: Exception) {
+            null // Gracefully fail if the sound file is not found.
+        }
+    }
+    val winSoundPlayer = remember {
+        try {
+            MediaPlayer.create(context, R.raw.win_sound)
+        } catch (e: Exception) {
+            null // Gracefully fail
+        }
     }
 
+    // Release MediaPlayer resources when the composable is disposed.
+    DisposableEffect(Unit) {
+        onDispose {
+            clickSoundPlayer?.release()
+            winSoundPlayer?.release()
+        }
+    }
+
+
+    // Effect for tile move feedback
+    LaunchedEffect(viewModel.moves) {
+        if (viewModel.moves > 0) { // Don't play on initial setup
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            clickSoundPlayer?.start()
+        }
+    }
+
+    // Effect for win feedback
     LaunchedEffect(viewModel.isComplete) {
         if (viewModel.isComplete) {
+            // A short delay to allow the last tile animation to finish.
             delay(300)
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            //winSoundPlayer?.start()
+            winSoundPlayer?.start()
         }
     }
 
@@ -281,8 +305,6 @@ fun PuzzleScreen(
         }
     }
 }
-
-// ... (Rest of the file remains the same)
 
 
 @Composable
