@@ -5,9 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.media.MediaPlayer
-import android.net.Uri
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
@@ -32,12 +31,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -45,8 +45,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import androidx.compose.ui.graphics.ImageBitmap
 
-
-// ViewModel to hold the state and logic
 class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var size by mutableStateOf(3)
     var moves by mutableStateOf(0)
@@ -55,7 +53,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var isComplete by mutableStateOf(false)
     var isNewHighScore by mutableStateOf(false)
     var finalScore by mutableStateOf(0)
-    var imageUri by mutableStateOf<Uri?>(null)
+    var imageUri by mutableStateOf<String?>(null)
 
     private var emptyRow by mutableStateOf(0)
     private var emptyCol by mutableStateOf(0)
@@ -63,12 +61,14 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
 
     fun setup(puzzleSize: Int, uriString: String?, context: Context) {
         size = puzzleSize
-        imageUri = uriString?.toUri()
+        imageUri = uriString
         values = Array(size) { Array(size) { 0 } }
-        newGame(context)
+        viewModelScope.launch {
+            newGame(context)
+        }
     }
 
-    fun newGame(context: Context) {
+    suspend fun newGame(context: Context) {
         moves = 0
         isComplete = false
         isNewHighScore = false
@@ -90,33 +90,25 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     }
 
     @SuppressLint("RestrictedApi")
-    private fun sliceImage(context: Context) {
+    private suspend fun sliceImage(context: Context) {
         try {
-            val sourceBitmap: Bitmap
-            if (imageUri != null) {
-                // Load bitmap from user-selected URI
-                context.contentResolver.openInputStream(imageUri!!)?.use {
-                    sourceBitmap = BitmapFactory.decodeStream(it)
-                }
-                ?: throw Exception("Cannot open input stream for URI")
-            } else {
-                // Fallback to loading bitmap from drawable resources
-                val drawableId = when (size) {
-                    3 -> R.drawable.puzzle_image_3x3
-                    4 -> R.drawable.puzzle_image_4x4
-                    5 -> R.drawable.puzzle_image_5x5
-                    else -> R.drawable.puzzle_image_3x3 // Default fallback
-                }
-                sourceBitmap = BitmapFactory.decodeResource(context.resources, drawableId)
+            // If no image is provided, do nothing. The UI should prevent this.
+            if (imageUri == null) {
+                return
             }
 
+            val request = ImageRequest.Builder(context)
+                .data(imageUri)
+                .allowHardware(false) // Important for bitmap manipulation
+                .build()
+            val result = context.imageLoader.execute(request).drawable
+            val sourceBitmap = (result as BitmapDrawable).bitmap
 
             val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, 600, 600, true)
             val pieces = mutableListOf<ImageBitmap>()
             val pieceSize = scaledBitmap.width / size
 
-            // Add a placeholder for the 0th tile (the empty space)
-            pieces.add(ImageBitmap(1, 1)) // Dummy bitmap
+            pieces.add(ImageBitmap(1, 1))
 
             for (r in 0 until size) {
                 for (c in 0 until size) {
@@ -126,9 +118,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             }
             imagePieces = pieces
         } catch (e: Exception) {
-            // Handle exception, e.g., if image resource is not found or URI is invalid
             e.printStackTrace()
-            // You might want to show an error message to the user here
         }
     }
 
@@ -155,11 +145,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             if (emptyCol < size - 1) neighbors.add(emptyRow to emptyCol + 1)
 
             val (randomRow, randomCol) = neighbors.random()
-
-            // Swap the empty tile with the random neighbor
             swap(emptyRow, emptyCol, randomRow, randomCol)
-
-            // Update the new empty tile position
             emptyRow = randomRow
             emptyCol = randomCol
         }
@@ -167,7 +153,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
         if (checkIfComplete()) {
             shuffleBoard()
         }
-        values = values.copyOf() // Trigger UI update
+        values = values.copyOf()
     }
 
     fun onTileClick(r: Int, c: Int) {
@@ -178,7 +164,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             emptyRow = r
             emptyCol = c
             moves++
-            values = values.copyOf() // Trigger recomposition
+            values = values.copyOf()
 
             if (checkIfComplete()) {
                 isComplete = true
@@ -243,6 +229,13 @@ class PuzzleActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val size = intent.getIntExtra("SIZE", 3).coerceAtLeast(3)
         val imageUriString = intent.getStringExtra("IMAGE_URI")
+
+        // Basic validation: If no image URI is provided, don't start the activity.
+        if (imageUriString == null) {
+            finish()
+            return
+        }
+
         val dataStore = SettingsDataStore(this)
 
         setContent {
@@ -273,7 +266,6 @@ fun PuzzleScreen(
         viewModel.setup(size, imageUriString, context)
     }
 
-    // --- Timer State and Logic ---
     var time by remember { mutableStateOf(0L) }
 
     LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.startTime) {
@@ -291,8 +283,8 @@ fun PuzzleScreen(
         "%02d:%02d".format(minutes, seconds)
     }
 
-    // --- Sound & Haptic Feedback ---
     val view = LocalView.current
+    val scope = rememberCoroutineScope()
 
     val clickSoundPlayer = remember {
         try {
@@ -327,18 +319,17 @@ fun PuzzleScreen(
         }
     }
 
-    // --- Win Screen Bottom Sheet ---
     val sheetState = rememberModalBottomSheetState()
     if (viewModel.isComplete) {
         ModalBottomSheet(
-            onDismissRequest = onMenuClick, // Go to menu if dismissed
+            onDismissRequest = onMenuClick,
             sheetState = sheetState,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp)
-                    .navigationBarsPadding(), // Ensures content is above navigation bar
+                    .navigationBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -351,7 +342,9 @@ fun PuzzleScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onMenuClick) { Text("Menü") }
                     Button(onClick = {
-                        viewModel.newGame(context)
+                        scope.launch {
+                            viewModel.newGame(context)
+                        }
                     }) { Text("Yeni Oyun") }
                 }
             }
@@ -401,12 +394,11 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
     ) {
         val tileSize = maxWidth / viewModel.size
 
-        // Create a map of number to its current position for quick lookup
         val tilePositions = remember(viewModel.values) {
             Array(viewModel.size * viewModel.size + 1) { 0 to 0 }.also { array ->
                 viewModel.values.forEachIndexed { r, row ->
                     row.forEachIndexed { c, number ->
-                        if (number >= 0 && number < array.size) { // Safety check
+                        if (number >= 0 && number < array.size) {
                             array[number] = r to c
                         }
                     }
@@ -420,10 +412,8 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
             val range = if (hasEmptyTile) (1 until lastTile) else (1..lastTile)
 
             range.forEach { number ->
-
-                // Find the current position of this specific tile
                 val (r, c) = tilePositions[number]
-                if (number >= viewModel.imagePieces.size) return@forEach // Safety check
+                if (number >= viewModel.imagePieces.size) return@forEach
                 val imageBitmap = viewModel.imagePieces[number]
 
                 val animatedX by animateDpAsState(
@@ -444,7 +434,6 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
                         .height(tileSize)
                         .padding(2.dp),
                     imageBitmap = imageBitmap,
-                    // The onClick is now correctly associated with the tile's logical position
                     onClick = { viewModel.onTileClick(r, c) }
                 )
             }
@@ -473,12 +462,13 @@ fun PuzzleTile(modifier: Modifier = Modifier, imageBitmap: ImageBitmap, onClick:
 @Composable
 fun ShuffleButton(viewModel: PuzzleViewModel) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var isShuffling by remember { mutableStateOf(false) }
     val buttonText = if (isShuffling) "✅ Karıştırıldı" else "🔀 Karıştır"
 
     Button(onClick = {
         isShuffling = true
-        viewModel.newGame(context)
+        scope.launch { viewModel.newGame(context) }
     }) {
         Text(buttonText)
     }

@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     alias(libs.plugins.compose.compiler)
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.23"
 }
 
 android {
@@ -55,6 +56,14 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Coil for image loading
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // Ktor for networking
+    implementation("io.ktor:ktor-client-android:2.3.12")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
 
     implementation("androidx.core:core-ktx:1.15.0")
 

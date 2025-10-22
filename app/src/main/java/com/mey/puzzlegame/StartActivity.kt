@@ -8,25 +8,25 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,16 +35,45 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-// ViewModel for Start Screen
+@OptIn(FlowPreview::class)
 class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
 
     val isDarkTheme = dataStore.isDarkTheme
+    private val pixabayService = PixabayService()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery = _searchQuery.asStateFlow()
+
+    private val _searchResults = MutableStateFlow<List<PixabayImage>>(emptyList())
+    val searchResults = _searchResults.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading = _isLoading.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _searchQuery
+                .debounce(500) // Wait for 500ms of silence
+                .filter { it.length > 2 } // Only search if the query is longer than 2 chars
+                .distinctUntilChanged() // Only search if the query has changed
+                .collect {
+                    query ->
+                    _isLoading.value = true
+                    _searchResults.value = pixabayService.searchImages(query)
+                    _isLoading.value = false
+                }
+        }
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+    }
 
     fun getHighScore(size: Int): StateFlow<Int> {
         return dataStore.getHighScore(size)
@@ -58,7 +87,6 @@ class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     }
 }
 
-// Factory to provide DataStore to ViewModel
 class StartViewModelFactory(private val dataStore: SettingsDataStore) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(StartViewModel::class.java)) {
@@ -86,8 +114,7 @@ class StartActivity : ComponentActivity() {
                     onStartPuzzle = { size, imageUri ->
                         val intent = Intent(this, PuzzleActivity::class.java).apply {
                             putExtra("SIZE", size)
-                            // Pass the Uri as a string. It can be null if no image is selected.
-                            putExtra("IMAGE_URI", imageUri?.toString())
+                            putExtra("IMAGE_URI", imageUri)
                         }
                         startActivity(intent)
                     }
@@ -100,17 +127,22 @@ class StartActivity : ComponentActivity() {
 @Composable
 fun StartScreen(
     viewModelFactory: StartViewModelFactory,
-    onStartPuzzle: (Int, Uri?) -> Unit,
+    onStartPuzzle: (Int, String?) -> Unit,
     viewModel: StartViewModel = viewModel(factory = viewModelFactory)
 ) {
     val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedImageUri by remember { mutableStateOf<String?>(null) }
 
-    // Modern photo picker launcher
-    val photoPickerLauncher = rememberLauncherForActivityResult(
+    // Photo picker launcher for local gallery
+    val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri -> selectedImageUri = uri }
+        onResult = { uri -> selectedImageUri = uri?.toString() }
     )
+
+    // States from ViewModel
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -118,70 +150,109 @@ fun StartScreen(
                 .fillMaxSize()
                 .systemBarsPadding()
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("🧩 Puzzle Game", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Zorluk seviyesi seçin", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            // --- Theme Toggle ---
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (isDarkTheme) "🌙" else "☀️", fontSize = 24.sp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Switch(
-                    checked = isDarkTheme,
-                    onCheckedChange = { viewModel.onThemeChange() }
-                )
+                Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Difficulty Buttons
-            Column(
+            // --- Image Source Selection ---
+            Text("1. Bir Resim Seçin", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 1. Pixabay Search
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { viewModel.onSearchQueryChange(it) },
+                label = { Text("Pixabay'de resim ara...") },
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // This box will hold the search results and the gallery button, taking up available space.
+            Box(modifier = Modifier.weight(1f)) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else if (searchResults.isNotEmpty()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 100.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(searchResults) { image ->
+                            AsyncImage(
+                                model = image.webformatURL,
+                                contentDescription = "Pixabay Image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { selectedImageUri = image.largeImageURL }
+                                    .border(
+                                        width = 3.dp,
+                                        color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                            )
+                        }
+                    }
+                }
+                // 2. Gallery Picker
+                Button(
+                    onClick = {
+                        galleryLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                ) {
+                    Text("🖼️ Veya Galeriden Resim Seç")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Difficulty Buttons ---
+            Text("2. Zorluk Seviyesi Seçin", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            AnimatedVisibility(visible = selectedImageUri == null) {
+                Text(
+                    text = "Lütfen oyuna başlamak için bir resim seçin",
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val easyHighScore by viewModel.getHighScore(3).collectAsState()
                 val mediumHighScore by viewModel.getHighScore(4).collectAsState()
                 val hardHighScore by viewModel.getHighScore(5).collectAsState()
 
-                DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, onClick = { onStartPuzzle(3, selectedImageUri) })
-                DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, onClick = { onStartPuzzle(4, selectedImageUri) })
-                DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, onClick = { onStartPuzzle(5, selectedImageUri) })
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Custom Image Picker Button
-            Button(
-                onClick = { photoPickerLauncher.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                ) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("🖼️ Galeriden Resim Seç")
-            }
-            if (selectedImageUri != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Seçilen resim puzzle için kullanılacak.", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-            } else {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Veya zorluk seviyesine özel resmi kullan.", fontSize = 12.sp, color = Color.Gray)
+                DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(3, selectedImageUri) })
+                DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(4, selectedImageUri) })
+                DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(5, selectedImageUri) })
             }
         }
     }
 }
 
 @Composable
-fun DifficultyButton(text: String, score: Int, onClick: () -> Unit) {
+fun DifficultyButton(text: String, score: Int, enabled: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
@@ -204,7 +275,6 @@ fun DifficultyButton(text: String, score: Int, onClick: () -> Unit) {
 @Composable
 fun StartScreenPreview() {
     PuzzleGameTheme {
-        // Dummy factory for preview
         val dummyDataStore = SettingsDataStore(LocalContext.current)
         StartScreen(viewModelFactory = StartViewModelFactory(dummyDataStore), onStartPuzzle = { _, _ -> })
     }

@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Ignore the Pixabay service file containing the API key
+/app/src/main/java/com/mey/puzzlegame/PixabayService.kt
