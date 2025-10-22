@@ -1,13 +1,20 @@
 package com.mey.puzzlegame
 
+import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -17,13 +24,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -31,37 +40,96 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import androidx.compose.ui.graphics.ImageBitmap
+
 
 // ViewModel to hold the state and logic
 class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var size by mutableStateOf(3)
     var moves by mutableStateOf(0)
     var values by mutableStateOf(Array(size) { Array(size) { 0 } })
+    var imagePieces by mutableStateOf<List<ImageBitmap>>(emptyList())
     var isComplete by mutableStateOf(false)
     var isNewHighScore by mutableStateOf(false)
     var finalScore by mutableStateOf(0)
+    var imageUri by mutableStateOf<Uri?>(null)
 
     private var emptyRow by mutableStateOf(0)
     private var emptyCol by mutableStateOf(0)
     var startTime by mutableStateOf(0L)
 
-    fun setup(puzzleSize: Int) {
+    fun setup(puzzleSize: Int, uriString: String?, context: Context) {
         size = puzzleSize
+        imageUri = uriString?.toUri()
         values = Array(size) { Array(size) { 0 } }
-        newGame()
+        newGame(context)
     }
 
-    fun newGame() {
+    fun newGame(context: Context) {
         moves = 0
         isComplete = false
         isNewHighScore = false
         finalScore = 0
         startTime = System.currentTimeMillis()
+        sliceImage(context)
         shuffleBoard()
+    }
+
+    fun solvePuzzle() {
+        var n = 1
+        for (r in 0 until size) {
+            for (c in 0 until size) {
+                values[r][c] = n++
+            }
+        }
+        isComplete = true
+        values = values.copyOf()
+    }
+
+    @SuppressLint("RestrictedApi")
+    private fun sliceImage(context: Context) {
+        try {
+            val sourceBitmap: Bitmap
+            if (imageUri != null) {
+                // Load bitmap from user-selected URI
+                context.contentResolver.openInputStream(imageUri!!)?.use {
+                    sourceBitmap = BitmapFactory.decodeStream(it)
+                }
+                ?: throw Exception("Cannot open input stream for URI")
+            } else {
+                // Fallback to loading bitmap from drawable resources
+                val drawableId = when (size) {
+                    3 -> R.drawable.puzzle_image_3x3
+                    4 -> R.drawable.puzzle_image_4x4
+                    5 -> R.drawable.puzzle_image_5x5
+                    else -> R.drawable.puzzle_image_3x3 // Default fallback
+                }
+                sourceBitmap = BitmapFactory.decodeResource(context.resources, drawableId)
+            }
+
+
+            val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, 600, 600, true)
+            val pieces = mutableListOf<ImageBitmap>()
+            val pieceSize = scaledBitmap.width / size
+
+            // Add a placeholder for the 0th tile (the empty space)
+            pieces.add(ImageBitmap(1, 1)) // Dummy bitmap
+
+            for (r in 0 until size) {
+                for (c in 0 until size) {
+                    val piece = Bitmap.createBitmap(scaledBitmap, c * pieceSize, r * pieceSize, pieceSize, pieceSize)
+                    pieces.add(piece.asImageBitmap())
+                }
+            }
+            imagePieces = pieces
+        } catch (e: Exception) {
+            // Handle exception, e.g., if image resource is not found or URI is invalid
+            e.printStackTrace()
+            // You might want to show an error message to the user here
+        }
     }
 
     private fun initValues() {
@@ -96,7 +164,6 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             emptyCol = randomCol
         }
 
-        // If the board happens to be solved after shuffling, shuffle again.
         if (checkIfComplete()) {
             shuffleBoard()
         }
@@ -175,12 +242,15 @@ class PuzzleActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
         val size = intent.getIntExtra("SIZE", 3).coerceAtLeast(3)
+        val imageUriString = intent.getStringExtra("IMAGE_URI")
         val dataStore = SettingsDataStore(this)
+
         setContent {
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
             PuzzleGameTheme(darkTheme = isDark) {
                 PuzzleScreen(
                     size = size,
+                    imageUriString = imageUriString,
                     viewModelFactory = PuzzleViewModelFactory(dataStore),
                     onMenuClick = { finish() }
                 )
@@ -189,15 +259,18 @@ class PuzzleActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PuzzleScreen(
     size: Int,
+    imageUriString: String?,
     viewModelFactory: PuzzleViewModelFactory,
     onMenuClick: () -> Unit,
     viewModel: PuzzleViewModel = viewModel(factory = viewModelFactory)
 ) {
-    LaunchedEffect(size) {
-        viewModel.setup(size)
+    val context = LocalContext.current
+    LaunchedEffect(size, imageUriString) {
+        viewModel.setup(size, imageUriString, context)
     }
 
     // --- Timer State and Logic ---
@@ -219,26 +292,19 @@ fun PuzzleScreen(
     }
 
     // --- Sound & Haptic Feedback ---
-    val context = LocalContext.current
     val view = LocalView.current
 
-    // Remember MediaPlayer instances, handling cases where sound files might not exist.
     val clickSoundPlayer = remember {
         try {
             MediaPlayer.create(context, R.raw.tile_click)
-        } catch (e: Exception) {
-            null // Gracefully fail if the sound file is not found.
-        }
+        } catch (e: Exception) { null }
     }
     val winSoundPlayer = remember {
         try {
             MediaPlayer.create(context, R.raw.win_sound)
-        } catch (e: Exception) {
-            null // Gracefully fail
-        }
+        } catch (e: Exception) { null }
     }
 
-    // Release MediaPlayer resources when the composable is disposed.
     DisposableEffect(Unit) {
         onDispose {
             clickSoundPlayer?.release()
@@ -246,34 +312,50 @@ fun PuzzleScreen(
         }
     }
 
-
-    // Effect for tile move feedback
     LaunchedEffect(viewModel.moves) {
-        if (viewModel.moves > 0) { // Don't play on initial setup
+        if (viewModel.moves > 0) {
             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             clickSoundPlayer?.start()
         }
     }
 
-    // Effect for win feedback
     LaunchedEffect(viewModel.isComplete) {
         if (viewModel.isComplete) {
-            // A short delay to allow the last tile animation to finish.
             delay(300)
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             winSoundPlayer?.start()
         }
     }
 
-
+    // --- Win Screen Bottom Sheet ---
+    val sheetState = rememberModalBottomSheetState()
     if (viewModel.isComplete) {
-        WinDialog(
-            isNewHighScore = viewModel.isNewHighScore,
-            moves = viewModel.moves,
-            score = viewModel.finalScore,
-            onDismiss = onMenuClick, // Go to menu on dismiss
-            onNewGame = { viewModel.newGame() }
-        )
+        ModalBottomSheet(
+            onDismissRequest = onMenuClick, // Go to menu if dismissed
+            sheetState = sheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .navigationBarsPadding(), // Ensures content is above navigation bar
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("🎉 Tebrikler!", style = MaterialTheme.typography.headlineMedium)
+                if (viewModel.isNewHighScore) {
+                    Text("🏆 Yeni Rekor: ${viewModel.finalScore} Puan!", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                } else {
+                    Text("Sadece ${viewModel.moves} hamlede tamamladın!\nPuan: ${viewModel.finalScore}")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onMenuClick) { Text("Menü") }
+                    Button(onClick = {
+                        viewModel.newGame(context)
+                    }) { Text("Yeni Oyun") }
+                }
+            }
+        }
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -281,11 +363,10 @@ fun PuzzleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
-                .systemBarsPadding(), // Add padding for system bars for edge-to-edge
+                .systemBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // --- Updated Top Row with Timer ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceAround,
@@ -301,12 +382,15 @@ fun PuzzleScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onMenuClick) { Text("Menü") }
                 ShuffleButton(viewModel)
+                if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                    Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
+                }
             }
         }
     }
 }
 
-
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun PuzzleBoard(viewModel: PuzzleViewModel) {
     BoxWithConstraints(
@@ -319,7 +403,7 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
 
         // Create a map of number to its current position for quick lookup
         val tilePositions = remember(viewModel.values) {
-            Array(viewModel.size * viewModel.size) { 0 to 0 }.also { array ->
+            Array(viewModel.size * viewModel.size + 1) { 0 to 0 }.also { array ->
                 viewModel.values.forEachIndexed { r, row ->
                     row.forEachIndexed { c, number ->
                         if (number >= 0 && number < array.size) { // Safety check
@@ -330,56 +414,38 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
             }
         }
 
-        // We render tiles from 1 to size*size - 1. Tile 0 is the empty space.
-        (1 until viewModel.size * viewModel.size).forEach { number ->
-            val (r, c) = tilePositions[number]
+        if (viewModel.imagePieces.isNotEmpty()) {
+            val hasEmptyTile = viewModel.values.flatten().any { it == 0 }
+            val lastTile = viewModel.size * viewModel.size
+            val range = if (hasEmptyTile) (1 until lastTile) else (1..lastTile)
 
-            val animatedX by animateDpAsState(
-                targetValue = tileSize * c,
-                animationSpec = tween(durationMillis = 300),
-                label = "tile_x_$number"
-            )
-            val animatedY by animateDpAsState(
-                targetValue = tileSize * r,
-                animationSpec = tween(durationMillis = 300),
-                label = "tile_y_$number"
-            )
+            range.forEach { number ->
 
-            PuzzleTile(
-                modifier = Modifier
-                    .offset(x = animatedX, y = animatedY)
-                    .width(tileSize)
-                    .height(tileSize)
-                    .padding(4.dp), // Add padding for spacing between tiles
-                value = number,
-                onClick = { viewModel.onTileClick(r, c) }
-            )
-        }
-    }
-}
+                // Find the current position of this specific tile
+                val (r, c) = tilePositions[number]
+                if (number >= viewModel.imagePieces.size) return@forEach // Safety check
+                val imageBitmap = viewModel.imagePieces[number]
 
+                val animatedX by animateDpAsState(
+                    targetValue = tileSize * c,
+                    animationSpec = tween(300),
+                    label = "tile_x_$number"
+                )
+                val animatedY by animateDpAsState(
+                    targetValue = tileSize * r,
+                    animationSpec = tween(300),
+                    label = "tile_y_$number"
+                )
 
-@Composable
-fun PuzzleTile(modifier: Modifier = Modifier, value: Int, onClick: () -> Unit) {
-    val isVisible = value != 0
-    val tileColor = MaterialTheme.colorScheme.primary
-    val emptyColor = Color.Transparent // Empty space should be fully transparent
-
-    Card(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = isVisible, onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isVisible) tileColor else emptyColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isVisible) 4.dp else 0.dp)
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            if (isVisible) {
-                Text(
-                    text = value.toString(),
-                    fontSize = 28.sp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontWeight = FontWeight.Bold
+                PuzzleTile(
+                    modifier = Modifier
+                        .offset(x = animatedX, y = animatedY)
+                        .width(tileSize)
+                        .height(tileSize)
+                        .padding(2.dp),
+                    imageBitmap = imageBitmap,
+                    // The onClick is now correctly associated with the tile's logical position
+                    onClick = { viewModel.onTileClick(r, c) }
                 )
             }
         }
@@ -387,13 +453,32 @@ fun PuzzleTile(modifier: Modifier = Modifier, value: Int, onClick: () -> Unit) {
 }
 
 @Composable
+fun PuzzleTile(modifier: Modifier = Modifier, imageBitmap: ImageBitmap, onClick: () -> Unit) {
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Image(
+            bitmap = imageBitmap,
+            contentDescription = "Puzzle Piece",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+    }
+}
+
+@Composable
 fun ShuffleButton(viewModel: PuzzleViewModel) {
+    val context = LocalContext.current
     var isShuffling by remember { mutableStateOf(false) }
     val buttonText = if (isShuffling) "✅ Karıştırıldı" else "🔀 Karıştır"
 
     Button(onClick = {
         isShuffling = true
-        viewModel.newGame()
+        viewModel.newGame(context)
     }) {
         Text(buttonText)
     }
@@ -406,42 +491,15 @@ fun ShuffleButton(viewModel: PuzzleViewModel) {
     }
 }
 
-@Composable
-fun WinDialog(isNewHighScore: Boolean, moves: Int, score: Int, onDismiss: () -> Unit, onNewGame: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text("🎉 Tebrikler!", style = MaterialTheme.typography.headlineMedium)
-                if (isNewHighScore) {
-                    Text("🏆 Yeni Rekor: $score Puan!", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                } else {
-                    Text("Sadece $moves hamlede tamamladın!\nPuan: $score")
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onDismiss) { Text("Menü") }
-                    Button(onClick = {
-                        onNewGame()
-                        // Keep dialog open until user clicks menu
-                    }) { Text("Yeni Oyun") }
-                }
-            }
-        }
-    }
-}
 
 @Preview(showBackground = true)
 @Composable
 fun PuzzleScreenPreview() {
     PuzzleGameTheme {
-        val dummyDataStore = SettingsDataStore(androidx.compose.ui.platform.LocalContext.current)
+        val dummyDataStore = SettingsDataStore(LocalContext.current)
         PuzzleScreen(
             size = 4, 
+            imageUriString = null,
             viewModelFactory = PuzzleViewModelFactory(dummyDataStore),
             onMenuClick = {}
         )
