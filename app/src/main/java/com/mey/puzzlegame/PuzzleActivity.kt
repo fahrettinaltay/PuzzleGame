@@ -3,7 +3,6 @@ package com.mey.puzzlegame
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.media.MediaPlayer
@@ -44,6 +43,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import androidx.compose.ui.graphics.ImageBitmap
+import coil.compose.AsyncImage
 
 class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var size by mutableStateOf(3)
@@ -92,7 +92,6 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     @SuppressLint("RestrictedApi")
     private suspend fun sliceImage(context: Context) {
         try {
-            // If no image is provided, do nothing. The UI should prevent this.
             if (imageUri == null) {
                 return
             }
@@ -108,7 +107,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             val pieces = mutableListOf<ImageBitmap>()
             val pieceSize = scaledBitmap.width / size
 
-            pieces.add(ImageBitmap(1, 1))
+            pieces.add(ImageBitmap(1, 1)) // Placeholder for index 0
 
             for (r in 0 until size) {
                 for (c in 0 until size) {
@@ -230,7 +229,6 @@ class PuzzleActivity : ComponentActivity() {
         val size = intent.getIntExtra("SIZE", 3).coerceAtLeast(3)
         val imageUriString = intent.getStringExtra("IMAGE_URI")
 
-        // Basic validation: If no image URI is provided, don't start the activity.
         if (imageUriString == null) {
             finish()
             return
@@ -267,6 +265,7 @@ fun PuzzleScreen(
     }
 
     var time by remember { mutableStateOf(0L) }
+    var showHintDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.startTime) {
         if (!viewModel.isComplete && viewModel.startTime > 0L) {
@@ -287,14 +286,10 @@ fun PuzzleScreen(
     val scope = rememberCoroutineScope()
 
     val clickSoundPlayer = remember {
-        try {
-            MediaPlayer.create(context, R.raw.tile_click)
-        } catch (e: Exception) { null }
+        try { MediaPlayer.create(context, R.raw.tile_click) } catch (e: Exception) { null }
     }
     val winSoundPlayer = remember {
-        try {
-            MediaPlayer.create(context, R.raw.win_sound)
-        } catch (e: Exception) { null }
+        try { MediaPlayer.create(context, R.raw.win_sound) } catch (e: Exception) { null }
     }
 
     DisposableEffect(Unit) {
@@ -351,6 +346,13 @@ fun PuzzleScreen(
         }
     }
 
+    if (showHintDialog) {
+        HintDialog(
+            imageUri = viewModel.imageUri,
+            onDismiss = { showHintDialog = false }
+        )
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -372,14 +374,41 @@ fun PuzzleScreen(
             Spacer(modifier = Modifier.height(16.dp))
             PuzzleBoard(viewModel)
             Spacer(modifier = Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = onMenuClick) { Text("Menü") }
                 ShuffleButton(viewModel)
-                if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
+                // Show the "Solve" button only in debug builds
+                if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
                     Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
+    if (imageUri != null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Orijinal Resim") },
+            text = {
+                AsyncImage(
+                    model = imageUri,
+                    contentDescription = "Orijinal Resim",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Fit
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Kapat")
+                }
+            }
+        )
     }
 }
 
