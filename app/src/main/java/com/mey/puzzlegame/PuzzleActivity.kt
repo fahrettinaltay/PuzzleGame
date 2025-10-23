@@ -17,12 +17,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -35,6 +40,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
@@ -42,8 +48,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import androidx.compose.ui.graphics.ImageBitmap
-import coil.compose.AsyncImage
 
 class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var size by mutableStateOf(3)
@@ -364,21 +368,30 @@ fun PuzzleScreen(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Hamle: ${viewModel.moves}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("Süre: $formattedTime", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                StatCard(
+                    modifier = Modifier.weight(1f),
+                    label = "Hamle",
+                    value = viewModel.moves.toString(),
+                    icon = Icons.Default.SwapHoriz
+                )
+                StatCard(
+                    modifier = Modifier.weight(1f),
+                    label = "Süre",
+                    value = formattedTime,
+                    icon = Icons.Default.Timer
+                )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             PuzzleBoard(viewModel)
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = onMenuClick) { Text("Menü") }
                 ShuffleButton(viewModel)
                 Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
-                // Show the "Solve" button only in debug builds
                 if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
                     Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
                 }
@@ -388,15 +401,31 @@ fun PuzzleScreen(
 }
 
 @Composable
+fun StatCard(modifier: Modifier = Modifier, label: String, value: String, icon: ImageVector) {
+    Card(modifier = modifier, shape = RoundedCornerShape(16.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = value, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text(text = label, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+
+@Composable
 fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
     if (imageUri != null) {
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Orijinal Resim") },
             text = {
                 AsyncImage(
                     model = imageUri,
-                    contentDescription = "Orijinal Resim",
+                    contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp)),
