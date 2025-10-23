@@ -15,7 +15,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,9 +40,10 @@ import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @OptIn(FlowPreview::class)
-class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
+class StartViewModel(private val dataStore: SettingsDataStore, private val lang: String) : ViewModel() {
 
     val isDarkTheme = dataStore.isDarkTheme
     private val pixabayService = PixabayService()
@@ -56,18 +57,56 @@ class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore = _isLoadingMore.asStateFlow()
+
+    // State for pagination
+    private var currentPage = 1
+    private var totalHits = 0
+
     init {
         viewModelScope.launch {
             _searchQuery
-                .debounce(500) // Wait for 500ms of silence
-                .filter { it.length > 2 } // Only search if the query is longer than 2 chars
-                .distinctUntilChanged() // Only search if the query has changed
-                .collect {
-                    query ->
-                    _isLoading.value = true
-                    _searchResults.value = pixabayService.searchImages(query)
-                    _isLoading.value = false
+                .debounce(500)
+                .filter { it.length > 2 }
+                .distinctUntilChanged()
+                .collect { query ->
+                    searchImages(query)
                 }
+        }
+    }
+
+    private fun searchImages(query: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            currentPage = 1 // Reset for new search
+            _searchResults.value = emptyList() // Clear previous results
+
+            val response = pixabayService.searchImages(query, lang, currentPage)
+            if (response != null) {
+                _searchResults.value = response.hits
+                totalHits = response.totalHits
+            } else {
+                totalHits = 0
+            }
+            _isLoading.value = false
+        }
+    }
+
+    fun loadMoreResults() {
+        // Prevent multiple simultaneous loads and loading if all results are already shown
+        if (_isLoadingMore.value || _searchResults.value.size >= totalHits) return
+
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            currentPage++
+
+            val response = pixabayService.searchImages(_searchQuery.value, lang, currentPage)
+            if (response != null) {
+                // Add new results to the existing list
+                _searchResults.value = _searchResults.value + response.hits
+            }
+            _isLoadingMore.value = false
         }
     }
 
@@ -87,11 +126,11 @@ class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     }
 }
 
-class StartViewModelFactory(private val dataStore: SettingsDataStore) : ViewModelProvider.Factory {
+class StartViewModelFactory(private val dataStore: SettingsDataStore, private val lang: String) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(StartViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return StartViewModel(dataStore) as T
+            return StartViewModel(dataStore, lang) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -104,13 +143,14 @@ class StartActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val dataStore = SettingsDataStore(this)
+        val lang = Locale.getDefault().language
 
         setContent {
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
 
             PuzzleGameTheme(darkTheme = isDark) {
                 StartScreen(
-                    viewModelFactory = StartViewModelFactory(dataStore),
+                    viewModelFactory = StartViewModelFactory(dataStore, lang),
                     onStartPuzzle = { size, imageUri ->
                         val intent = Intent(this, PuzzleActivity::class.java).apply {
                             putExtra("SIZE", size)
@@ -133,7 +173,6 @@ fun StartScreen(
     val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
     var selectedImageUri by remember { mutableStateOf<String?>(null) }
 
-    // Photo picker launcher for local gallery
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri -> selectedImageUri = uri?.toString() }
@@ -143,6 +182,7 @@ fun StartScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -155,7 +195,6 @@ fun StartScreen(
             Text("🧩 Puzzle Game", fontSize = 32.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- Theme Toggle ---
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (isDarkTheme) "🌙" else "☀️", fontSize = 24.sp)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -164,11 +203,9 @@ fun StartScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- Image Source Selection ---
             Text("1. Bir Resim Seçin", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 1. Pixabay Search
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.onSearchQueryChange(it) },
@@ -178,8 +215,12 @@ fun StartScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            // This box will hold the search results and the gallery button, taking up available space.
-            Box(modifier = Modifier.weight(1f)) {
+            // This box holds the search results, using weight to take up available space.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f) // This makes the box flexible
+            ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else if (searchResults.isNotEmpty()) {
@@ -189,7 +230,14 @@ fun StartScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(searchResults) { image ->
+                        itemsIndexed(searchResults) { index, image ->
+                            // When the last item is about to be displayed, load more
+                            if (index == searchResults.size - 1) {
+                                LaunchedEffect(Unit) { // Use LaunchedEffect to call suspend functions
+                                    viewModel.loadMoreResults()
+                                }
+                            }
+
                             AsyncImage(
                                 model = image.webformatURL,
                                 contentDescription = "Pixabay Image",
@@ -205,24 +253,46 @@ fun StartScreen(
                                     )
                             )
                         }
+
+                        // Show loading indicator at the bottom if more results are being loaded
+                        if (isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        }
                     }
+                } else if (searchQuery.length > 2) {
+                    Text(
+                        text = "'$searchQuery' için sonuç bulunamadı.",
+                        modifier = Modifier.align(Alignment.Center),
+                        textAlign = TextAlign.Center
+                    )
                 }
-                // 2. Gallery Picker
-                Button(
-                    onClick = {
-                        galleryLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                ) {
-                    Text("🖼️ Veya Galeriden Resim Seç")
-                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- Gallery Button (Now safely outside the scrollable area) ---
+            Button(
+                onClick = {
+                    galleryLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("🖼️ Veya Galeriden Resim Seç")
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- Difficulty Buttons ---
             Text("2. Zorluk Seviyesi Seçin", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -276,6 +346,6 @@ fun DifficultyButton(text: String, score: Int, enabled: Boolean, onClick: () -> 
 fun StartScreenPreview() {
     PuzzleGameTheme {
         val dummyDataStore = SettingsDataStore(LocalContext.current)
-        StartScreen(viewModelFactory = StartViewModelFactory(dummyDataStore), onStartPuzzle = { _, _ -> })
+        // StartScreen(viewModelFactory = StartViewModelFactory(dummyDataStore, "en"), onStartPuzzle = { _, _ -> })
     }
 }
