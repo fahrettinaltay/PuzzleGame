@@ -229,6 +229,35 @@ fun StartScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
 
+    var showNewGameDialog by remember { mutableStateOf(false) }
+    var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
+
+    if (showNewGameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewGameDialog = false },
+            title = { Text("Yeni Oyuna Başla?") },
+            text = { Text("Devam eden bir oyununuz var. Yeni bir oyuna başlamak mevcut ilerlemenizi silecek. Emin misiniz?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearSavedGame()
+                        pendingNewGameSize?.let { size ->
+                            onStartPuzzle(size, selectedImageUri)
+                        }
+                        showNewGameDialog = false
+                    }
+                ) {
+                    Text("Yeni Başla")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewGameDialog = false }) {
+                    Text("İptal")
+                }
+            }
+        )
+    }
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -346,14 +375,23 @@ fun StartScreen(
                 )
             }
 
+            val handleDifficultyClick = { size: Int ->
+                if (savedGame != null) {
+                    pendingNewGameSize = size
+                    showNewGameDialog = true
+                } else {
+                    onStartPuzzle(size, selectedImageUri)
+                }
+            }
+
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val easyHighScore by viewModel.getHighScore(3).collectAsState()
                 val mediumHighScore by viewModel.getHighScore(4).collectAsState()
                 val hardHighScore by viewModel.getHighScore(5).collectAsState()
 
-                DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(3, selectedImageUri) })
-                DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(4, selectedImageUri) })
-                DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(5, selectedImageUri) })
+                DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, enabled = selectedImageUri != null, onClick = { handleDifficultyClick(3) })
+                DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, enabled = selectedImageUri != null, onClick = { handleDifficultyClick(4) })
+                DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, enabled = selectedImageUri != null, onClick = { handleDifficultyClick(5) })
             }
         }
     }
