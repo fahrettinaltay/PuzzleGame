@@ -2,7 +2,6 @@ package com.mey.puzzlegame
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.media.MediaPlayer
@@ -18,7 +17,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,28 +57,67 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var isNewHighScore by mutableStateOf(false)
     var finalScore by mutableStateOf(0)
     var imageUri by mutableStateOf<String?>(null)
+    var isLoading by mutableStateOf(true)
 
     private var emptyRow by mutableStateOf(0)
     private var emptyCol by mutableStateOf(0)
-    var startTime by mutableStateOf(0L)
+    private var startTime by mutableStateOf(0L)
+    private var timeWhenPaused by mutableStateOf(0L)
 
     fun setup(puzzleSize: Int, uriString: String?, context: Context) {
-        size = puzzleSize
-        imageUri = uriString
-        values = Array(size) { Array(size) { 0 } }
         viewModelScope.launch {
-            newGame(context)
+            val savedState = dataStore.savedGameState.first()
+            if (savedState != null && savedState.imageUri == uriString && savedState.size == puzzleSize) {
+                loadFromState(savedState, context)
+            } else {
+                clearAndNewGame(puzzleSize, uriString, context)
+            }
         }
     }
 
-    suspend fun newGame(context: Context) {
+    private suspend fun loadFromState(gameState: GameState, context: Context) {
+        size = gameState.size
+        values = Array(size) { Array(size) { 0 } } // Resize array before populating
+        imageUri = gameState.imageUri
+        moves = gameState.moves
+        timeWhenPaused = gameState.elapsedTime
+        values = gameState.puzzle.chunked(size).map { it.toTypedArray() }.toTypedArray()
+
+        for (r in 0 until size) {
+            for (c in 0 until size) {
+                if (values[r][c] == 0) {
+                    emptyRow = r
+                    emptyCol = c
+                    break
+                }
+            }
+        }
+
+        sliceImage(context)
+        startTime = System.currentTimeMillis()
+        isLoading = false
+    }
+
+    suspend fun clearAndNewGame(puzzleSize: Int, uriString: String?, context: Context) {
+        dataStore.clearSavedGame()
+        size = puzzleSize
+        values = Array(size) { Array(size) { 0 } } // FIX: Resize the array for the new game size
+        imageUri = uriString
+        newGame(context)
+    }
+
+    private suspend fun newGame(context: Context) {
+        isLoading = true
         moves = 0
         isComplete = false
         isNewHighScore = false
         finalScore = 0
-        startTime = System.currentTimeMillis()
+        timeWhenPaused = 0L
         sliceImage(context)
         shuffleBoard()
+        startTime = System.currentTimeMillis()
+        isLoading = false
+        saveState()
     }
 
     fun solvePuzzle() {
@@ -91,28 +129,36 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
         }
         isComplete = true
         values = values.copyOf()
+        viewModelScope.launch { dataStore.clearSavedGame() }
+    }
+
+    fun saveState() {
+        if (isLoading || isComplete) return
+
+        val currentElapsedTime = timeWhenPaused + (System.currentTimeMillis() - startTime)
+        val gameState = GameState(
+            size = size,
+            moves = moves,
+            elapsedTime = currentElapsedTime,
+            imageUri = imageUri,
+            puzzle = values.flatten()
+        )
+        viewModelScope.launch {
+            dataStore.saveGameState(gameState)
+        }
     }
 
     @SuppressLint("RestrictedApi")
     private suspend fun sliceImage(context: Context) {
         try {
-            if (imageUri == null) {
-                return
-            }
-
-            val request = ImageRequest.Builder(context)
-                .data(imageUri)
-                .allowHardware(false) // Important for bitmap manipulation
-                .build()
+            if (imageUri == null) return
+            val request = ImageRequest.Builder(context).data(imageUri).allowHardware(false).build()
             val result = context.imageLoader.execute(request).drawable
             val sourceBitmap = (result as BitmapDrawable).bitmap
-
             val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, 600, 600, true)
             val pieces = mutableListOf<ImageBitmap>()
             val pieceSize = scaledBitmap.width / size
-
-            pieces.add(ImageBitmap(1, 1)) // Placeholder for index 0
-
+            pieces.add(ImageBitmap(1, 1))
             for (r in 0 until size) {
                 for (c in 0 until size) {
                     val piece = Bitmap.createBitmap(scaledBitmap, c * pieceSize, r * pieceSize, pieceSize, pieceSize)
@@ -146,13 +192,11 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             if (emptyRow < size - 1) neighbors.add(emptyRow + 1 to emptyCol)
             if (emptyCol > 0) neighbors.add(emptyRow to emptyCol - 1)
             if (emptyCol < size - 1) neighbors.add(emptyRow to emptyCol + 1)
-
             val (randomRow, randomCol) = neighbors.random()
             swap(emptyRow, emptyCol, randomRow, randomCol)
             emptyRow = randomRow
             emptyCol = randomCol
         }
-
         if (checkIfComplete()) {
             shuffleBoard()
         }
@@ -160,7 +204,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     }
 
     fun onTileClick(r: Int, c: Int) {
-        if (isComplete) return
+        if (isComplete || isLoading) return
         val isAdjacent = (r == emptyRow && abs(c - emptyCol) == 1) || (c == emptyCol && abs(r - emptyRow) == 1)
         if (isAdjacent) {
             swap(r, c, emptyRow, emptyCol)
@@ -168,7 +212,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             emptyCol = c
             moves++
             values = values.copyOf()
-
+            saveState()
             if (checkIfComplete()) {
                 isComplete = true
                 calculateAndSaveScore()
@@ -178,19 +222,18 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
 
     private fun calculateAndSaveScore() {
         viewModelScope.launch {
-            val timeElapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+            val timeElapsed = (timeWhenPaused + (System.currentTimeMillis() - startTime)) / 1000
             val difficultyMultiplier = when (size) { 3 -> 1.0; 4 -> 1.5; 5 -> 2.0; else -> 1.0 }
             val movePenalty = 10
             val timePenalty = 5
             val baseScore = 10000
-
             finalScore = ((baseScore * difficultyMultiplier) - (moves * movePenalty) - (timeElapsed * timePenalty)).toInt().coerceAtLeast(0)
-
             val oldHighScore = dataStore.getHighScore(size).first()
             if (finalScore > oldHighScore) {
                 isNewHighScore = true
                 dataStore.updateHighScore(size, finalScore)
             }
+            dataStore.clearSavedGame()
         }
     }
 
@@ -213,6 +256,13 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
         }
         return true
     }
+
+    fun getElapsedTime(): Long {
+        if (startTime == 0L || isComplete || isLoading) {
+            return timeWhenPaused
+        }
+        return timeWhenPaused + (System.currentTimeMillis() - startTime)
+    }
 }
 
 class PuzzleViewModelFactory(private val dataStore: SettingsDataStore) : ViewModelProvider.Factory {
@@ -226,6 +276,7 @@ class PuzzleViewModelFactory(private val dataStore: SettingsDataStore) : ViewMod
 }
 
 class PuzzleActivity : ComponentActivity() {
+    private lateinit var viewModel: PuzzleViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -239,17 +290,34 @@ class PuzzleActivity : ComponentActivity() {
         }
 
         val dataStore = SettingsDataStore(this)
+        val viewModelFactory = PuzzleViewModelFactory(dataStore)
 
         setContent {
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+            viewModel = viewModel(factory = viewModelFactory)
+
             PuzzleGameTheme(darkTheme = isDark) {
+                val scope = rememberCoroutineScope()
+                val context = LocalContext.current
                 PuzzleScreen(
                     size = size,
                     imageUriString = imageUriString,
-                    viewModelFactory = PuzzleViewModelFactory(dataStore),
-                    onMenuClick = { finish() }
+                    viewModel = viewModel,
+                    onMenuClick = {
+                        finish() // onStop will save the state
+                    },
+                    onNewGameClick = {
+                        scope.launch { viewModel.clearAndNewGame(size, imageUriString, context) }
+                    }
                 )
             }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (::viewModel.isInitialized) {
+            viewModel.saveState()
         }
     }
 }
@@ -259,9 +327,9 @@ class PuzzleActivity : ComponentActivity() {
 fun PuzzleScreen(
     size: Int,
     imageUriString: String?,
-    viewModelFactory: PuzzleViewModelFactory,
+    viewModel: PuzzleViewModel,
     onMenuClick: () -> Unit,
-    viewModel: PuzzleViewModel = viewModel(factory = viewModelFactory)
+    onNewGameClick: () -> Unit
 ) {
     val context = LocalContext.current
     LaunchedEffect(size, imageUriString) {
@@ -271,18 +339,16 @@ fun PuzzleScreen(
     var time by remember { mutableStateOf(0L) }
     var showHintDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.startTime) {
-        if (!viewModel.isComplete && viewModel.startTime > 0L) {
-            while (true) {
-                time = (System.currentTimeMillis() - viewModel.startTime) / 1000
-                delay(1000)
-            }
+    LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.isLoading) {
+        while (!viewModel.isComplete && !viewModel.isLoading) {
+            time = viewModel.getElapsedTime()
+            delay(1000)
         }
     }
 
     val formattedTime = remember(time) {
-        val minutes = time / 60
-        val seconds = time % 60
+        val minutes = (time / 1000) / 60
+        val seconds = (time / 1000) % 60
         "%02d:%02d".format(minutes, seconds)
     }
 
@@ -304,7 +370,7 @@ fun PuzzleScreen(
     }
 
     LaunchedEffect(viewModel.moves) {
-        if (viewModel.moves > 0) {
+        if (viewModel.moves > 0 && !viewModel.isLoading) {
             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             clickSoundPlayer?.start()
         }
@@ -340,11 +406,7 @@ fun PuzzleScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onMenuClick) { Text("Menü") }
-                    Button(onClick = {
-                        scope.launch {
-                            viewModel.newGame(context)
-                        }
-                    }) { Text("Yeni Oyun") }
+                    Button(onClick = onNewGameClick) { Text("Yeni Oyun") }
                 }
             }
         }
@@ -358,42 +420,48 @@ fun PuzzleScreen(
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-                .systemBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    label = "Hamle",
-                    value = viewModel.moves.toString(),
-                    icon = Icons.Default.SwapHoriz
-                )
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    label = "Süre",
-                    value = formattedTime,
-                    icon = Icons.Default.Timer
-                )
+        if (viewModel.isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
             }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .systemBarsPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Hamle",
+                        value = viewModel.moves.toString(),
+                        icon = Icons.Default.SyncAlt
+                    )
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Süre",
+                        value = formattedTime,
+                        icon = Icons.Default.Timer
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(24.dp))
-            PuzzleBoard(viewModel)
-            Spacer(modifier = Modifier.height(24.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = onMenuClick) { Text("Menü") }
-                ShuffleButton(viewModel)
-                Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
-                if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-                    Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
+                Spacer(modifier = Modifier.height(24.dp))
+                PuzzleBoard(viewModel)
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = onMenuClick) { Text("Menü") }
+                    ShuffleButton(onClick = onNewGameClick)
+                    Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
+                    if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                        Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
+                    }
                 }
             }
         }
@@ -415,7 +483,6 @@ fun StatCard(modifier: Modifier = Modifier, label: String, value: String, icon: 
         }
     }
 }
-
 
 @Composable
 fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
@@ -518,15 +585,14 @@ fun PuzzleTile(modifier: Modifier = Modifier, imageBitmap: ImageBitmap, onClick:
 }
 
 @Composable
-fun ShuffleButton(viewModel: PuzzleViewModel) {
-    val context = LocalContext.current
+fun ShuffleButton(onClick: () -> Unit) {
     val scope = rememberCoroutineScope()
     var isShuffling by remember { mutableStateOf(false) }
     val buttonText = if (isShuffling) "✅ Karıştırıldı" else "🔀 Karıştır"
 
     Button(onClick = {
         isShuffling = true
-        scope.launch { viewModel.newGame(context) }
+        onClick()
     }) {
         Text(buttonText)
     }
@@ -544,12 +610,7 @@ fun ShuffleButton(viewModel: PuzzleViewModel) {
 @Composable
 fun PuzzleScreenPreview() {
     PuzzleGameTheme {
-        val dummyDataStore = SettingsDataStore(LocalContext.current)
-        PuzzleScreen(
-            size = 4, 
-            imageUriString = null,
-            viewModelFactory = PuzzleViewModelFactory(dummyDataStore),
-            onMenuClick = {}
-        )
+        // This preview is simplified and won't have a real ViewModel
+        // You can create a dummy ViewModel or pass dummy data for preview purposes
     }
 }

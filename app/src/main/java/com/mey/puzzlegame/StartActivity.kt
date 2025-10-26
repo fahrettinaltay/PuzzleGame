@@ -1,5 +1,6 @@
 package com.mey.puzzlegame
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -17,6 +18,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +43,8 @@ import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 
 @OptIn(FlowPreview::class)
@@ -60,11 +65,20 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore = _isLoadingMore.asStateFlow()
 
-    // State for pagination
+    private val _savedGameState = MutableStateFlow<GameState?>(null)
+    val savedGameState = _savedGameState.asStateFlow()
+
+    private val _selectedImageUri = MutableStateFlow<String?>(null)
+    val selectedImageUri = _selectedImageUri.asStateFlow()
+
     private var currentPage = 1
     private var totalHits = 0
 
     init {
+        viewModelScope.launch {
+            dataStore.savedGameState.collect { _savedGameState.value = it }
+        }
+
         viewModelScope.launch {
             _searchQuery
                 .debounce(500)
@@ -76,12 +90,17 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
         }
     }
 
+    fun clearSavedGame() {
+        viewModelScope.launch {
+            dataStore.clearSavedGame()
+        }
+    }
+
     private fun searchImages(query: String) {
         viewModelScope.launch {
             _isLoading.value = true
-            currentPage = 1 // Reset for new search
-            _searchResults.value = emptyList() // Clear previous results
-
+            currentPage = 1
+            _searchResults.value = emptyList()
             val response = pixabayService.searchImages(query, lang, currentPage)
             if (response != null) {
                 _searchResults.value = response.hits
@@ -94,16 +113,12 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
     }
 
     fun loadMoreResults() {
-        // Prevent multiple simultaneous loads and loading if all results are already shown
         if (_isLoadingMore.value || _searchResults.value.size >= totalHits) return
-
         viewModelScope.launch {
             _isLoadingMore.value = true
             currentPage++
-
             val response = pixabayService.searchImages(_searchQuery.value, lang, currentPage)
             if (response != null) {
-                // Add new results to the existing list
                 _searchResults.value = _searchResults.value + response.hits
             }
             _isLoadingMore.value = false
@@ -112,6 +127,35 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
+    }
+
+    fun onPixabayImageSelected(uri: String) {
+        _selectedImageUri.value = uri
+    }
+
+    fun onGalleryImageSelected(uri: Uri?, context: Context) {
+        viewModelScope.launch {
+            uri?.let {
+                val permanentUri = copyUriToInternalStorage(it, context)
+                _selectedImageUri.value = permanentUri
+            }
+        }
+    }
+
+    private fun copyUriToInternalStorage(uri: Uri, context: Context): String? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            val fileName = "puzzle_image_${System.currentTimeMillis()}.jpg"
+            val file = File(context.filesDir, fileName)
+            val outputStream = FileOutputStream(file)
+            inputStream?.copyTo(outputStream)
+            inputStream?.close()
+            outputStream.close()
+            Uri.fromFile(file).toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     fun getHighScore(size: Int): StateFlow<Int> {
@@ -170,19 +214,20 @@ fun StartScreen(
     onStartPuzzle: (Int, String?) -> Unit,
     viewModel: StartViewModel = viewModel(factory = viewModelFactory)
 ) {
+    val context = LocalContext.current
     val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
-    var selectedImageUri by remember { mutableStateOf<String?>(null) }
+    val selectedImageUri by viewModel.selectedImageUri.collectAsState()
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri -> selectedImageUri = uri?.toString() }
+        onResult = { uri: Uri? -> viewModel.onGalleryImageSelected(uri, context) }
     )
 
-    // States from ViewModel
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val savedGame by viewModel.savedGameState.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -203,6 +248,10 @@ fun StartScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            AnimatedVisibility(visible = savedGame != null) {
+                SavedGameCard(gameState = savedGame, onContinue = onStartPuzzle, onDelete = { viewModel.clearSavedGame() })
+            }
+
             Text("1. Bir Resim Seçin", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -215,11 +264,10 @@ fun StartScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            // This box holds the search results, using weight to take up available space.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f) // This makes the box flexible
+                    .weight(1f)
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -231,13 +279,9 @@ fun StartScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         itemsIndexed(searchResults) { index, image ->
-                            // When the last item is about to be displayed, load more
                             if (index == searchResults.size - 1) {
-                                LaunchedEffect(Unit) { // Use LaunchedEffect to call suspend functions
-                                    viewModel.loadMoreResults()
-                                }
+                                LaunchedEffect(Unit) { viewModel.loadMoreResults() }
                             }
-
                             AsyncImage(
                                 model = image.webformatURL,
                                 contentDescription = "Pixabay Image",
@@ -245,7 +289,7 @@ fun StartScreen(
                                 modifier = Modifier
                                     .aspectRatio(1f)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { selectedImageUri = image.largeImageURL }
+                                    .clickable { viewModel.onPixabayImageSelected(image.largeImageURL) }
                                     .border(
                                         width = 3.dp,
                                         color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -253,8 +297,6 @@ fun StartScreen(
                                     )
                             )
                         }
-
-                        // Show loading indicator at the bottom if more results are being loaded
                         if (isLoadingMore) {
                             item {
                                 Box(
@@ -279,7 +321,6 @@ fun StartScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- Gallery Button (Now safely outside the scrollable area) ---
             Button(
                 onClick = {
                     galleryLauncher.launch(
@@ -296,7 +337,7 @@ fun StartScreen(
             Text("2. Zorluk Seviyesi Seçin", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(16.dp))
 
-            AnimatedVisibility(visible = selectedImageUri == null) {
+            AnimatedVisibility(visible = selectedImageUri == null && savedGame == null) {
                 Text(
                     text = "Lütfen oyuna başlamak için bir resim seçin",
                     color = MaterialTheme.colorScheme.error,
@@ -313,6 +354,49 @@ fun StartScreen(
                 DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(3, selectedImageUri) })
                 DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(4, selectedImageUri) })
                 DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, enabled = selectedImageUri != null, onClick = { onStartPuzzle(5, selectedImageUri) })
+            }
+        }
+    }
+}
+
+@Composable
+fun SavedGameCard(gameState: GameState?, onContinue: (Int, String?) -> Unit, onDelete: () -> Unit) {
+    gameState ?: return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                AsyncImage(
+                    model = gameState.imageUri,
+                    contentDescription = "Saved Game Thumbnail",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("Kaydedilmiş Oyun", fontWeight = FontWeight.Bold)
+                    Text("${gameState.size}x${gameState.size} | ${gameState.moves} hamle", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete Saved Game")
+                }
+                Button(onClick = { onContinue(gameState.size, gameState.imageUri) }) {
+                    Text("Devam Et")
+                }
             }
         }
     }
