@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -285,6 +286,7 @@ class PuzzleViewModelFactory(private val dataStore: SettingsDataStore) : ViewMod
 
 class PuzzleActivity : ComponentActivity() {
     private lateinit var viewModel: PuzzleViewModel
+    private lateinit var dataStore: SettingsDataStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -297,11 +299,12 @@ class PuzzleActivity : ComponentActivity() {
             return
         }
 
-        val dataStore = SettingsDataStore(this)
+        dataStore = SettingsDataStore(this)
         val viewModelFactory = PuzzleViewModelFactory(dataStore)
 
         setContent {
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+            val showTileNumbers by dataStore.showTileNumbers.collectAsState(initial = false)
             viewModel = viewModel(factory = viewModelFactory)
 
             PuzzleGameTheme(darkTheme = isDark) {
@@ -311,6 +314,7 @@ class PuzzleActivity : ComponentActivity() {
                     size = size,
                     imageUriString = imageUriString,
                     viewModel = viewModel,
+                    showTileNumbers = showTileNumbers,
                     onMenuClick = {
                         finish() // onStop will save the state
                     },
@@ -336,6 +340,7 @@ fun PuzzleScreen(
     size: Int,
     imageUriString: String?,
     viewModel: PuzzleViewModel,
+    showTileNumbers: Boolean,
     onMenuClick: () -> Unit,
     onNewGameClick: () -> Unit
 ) {
@@ -389,12 +394,12 @@ fun PuzzleScreen(
             // Immediate feedback first
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             winSoundPlayer?.start()
-            
+
             // Start the visual celebration
             showCelebration = true
-            
+
             // After the celebration has played for a bit, show the results
-            delay(200) 
+            delay(200)
             showBottomSheet = true
         } else {
             showBottomSheet = false
@@ -439,7 +444,7 @@ fun PuzzleScreen(
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    PuzzleBoard(viewModel)
+                    PuzzleBoard(viewModel, showTileNumbers)
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = onMenuClick) { Text("Menü") }
@@ -454,7 +459,7 @@ fun PuzzleScreen(
         }
 
         if (showCelebration) {
-            CelebrationEffect() 
+            CelebrationEffect()
         }
 
         if (showBottomSheet) {
@@ -495,7 +500,7 @@ fun PuzzleScreen(
 
 @Composable
 fun CelebrationEffect() {
-    val particles = remember { List(50) { Particle() } } 
+    val particles = remember { List(50) { Particle() } }
     val progress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
@@ -599,7 +604,7 @@ fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun PuzzleBoard(viewModel: PuzzleViewModel) {
+fun PuzzleBoard(viewModel: PuzzleViewModel, showTileNumbers: Boolean) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -648,6 +653,8 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
                         .height(tileSize)
                         .padding(2.dp),
                     imageBitmap = imageBitmap,
+                    number = number,
+                    showNumber = showTileNumbers,
                     onClick = { viewModel.onTileClick(r, c) }
                 )
             }
@@ -656,7 +663,13 @@ fun PuzzleBoard(viewModel: PuzzleViewModel) {
 }
 
 @Composable
-fun PuzzleTile(modifier: Modifier = Modifier, imageBitmap: ImageBitmap, onClick: () -> Unit) {
+fun PuzzleTile(
+    modifier: Modifier = Modifier,
+    imageBitmap: ImageBitmap,
+    number: Int,
+    showNumber: Boolean,
+    onClick: () -> Unit
+) {
     Card(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
@@ -664,12 +677,30 @@ fun PuzzleTile(modifier: Modifier = Modifier, imageBitmap: ImageBitmap, onClick:
         shape = RoundedCornerShape(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Image(
-            bitmap = imageBitmap,
-            contentDescription = "Puzzle Piece",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = "Puzzle Piece",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            if (showNumber) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = number.toString(),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
     }
 }
 

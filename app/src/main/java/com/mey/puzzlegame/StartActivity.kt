@@ -51,6 +51,7 @@ import java.util.Locale
 class StartViewModel(private val dataStore: SettingsDataStore, private val lang: String) : ViewModel() {
 
     val isDarkTheme = dataStore.isDarkTheme
+    val showTileNumbers = dataStore.showTileNumbers
     private val pixabayService = PixabayService()
 
     private val _searchQuery = MutableStateFlow("")
@@ -168,6 +169,12 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
             dataStore.toggleTheme()
         }
     }
+
+    fun onShowTileNumbersChange() {
+        viewModelScope.launch {
+            dataStore.toggleShowTileNumbers()
+        }
+    }
 }
 
 class StartViewModelFactory(private val dataStore: SettingsDataStore, private val lang: String) : ViewModelProvider.Factory {
@@ -216,6 +223,7 @@ fun StartScreen(
 ) {
     val context = LocalContext.current
     val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+    val showTileNumbers by viewModel.showTileNumbers.collectAsState(initial = false)
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -273,6 +281,12 @@ fun StartScreen(
                 Text(if (isDarkTheme) "🌙" else "☀️", fontSize = 24.sp)
                 Spacer(modifier = Modifier.width(8.dp))
                 Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🔢 Numaraları Göster", fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
             }
 
             Spacer(modifier = Modifier.height(24.dp))

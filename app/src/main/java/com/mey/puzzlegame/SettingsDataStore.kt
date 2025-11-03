@@ -31,6 +31,7 @@ class SettingsDataStore(private val context: Context) {
     companion object {
         private fun highScoreKey(size: Int) = intPreferencesKey("high_score_$size")
         private val THEME_KEY = booleanPreferencesKey("dark_theme")
+        private val SHOW_TILE_NUMBERS = booleanPreferencesKey("show_tile_numbers")
         private val SAVED_GAME_STATE = stringPreferencesKey("saved_game_state")
     }
 
@@ -89,6 +90,17 @@ class SettingsDataStore(private val context: Context) {
     suspend fun toggleTheme() {
         context.dataStore.edit {
             it[THEME_KEY] = !(it[THEME_KEY] ?: false)
+        }
+    }
+
+    // --- Show Tile Numbers ---
+
+    val showTileNumbers: Flow<Boolean>
+        get() = context.dataStore.data.map { it[SHOW_TILE_NUMBERS] ?: false }
+
+    suspend fun toggleShowTileNumbers() {
+        context.dataStore.edit {
+            it[SHOW_TILE_NUMBERS] = !(it[SHOW_TILE_NUMBERS] ?: false)
         }
     }
 }
