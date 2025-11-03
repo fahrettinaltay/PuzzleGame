@@ -12,6 +12,7 @@ activity = "1.11.0"
 constraintlayout = "2.1.4"
 gridlayout = "1.1.0"
 materialVersion = "1.13.0"
+material3 = "1.4.0"
 
 [libraries]
 androidx-constraintlayout-v221 = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayoutVersion" }
@@ -25,6 +26,7 @@ androidx-activity = { group = "androidx.activity", name = "activity", version.re
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 androidx-gridlayout = { group = "androidx.gridlayout", name = "gridlayout", version.ref = "gridlayout" }
 material-v1130 = { module = "com.google.android.material:material", version.ref = "materialVersion" }
+androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

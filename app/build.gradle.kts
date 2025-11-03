@@ -71,6 +71,7 @@ dependencies {
     implementation("org.slf4j:slf4j-android:1.7.32")
 
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation(libs.androidx.material3)
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

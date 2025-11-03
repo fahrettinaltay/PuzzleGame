@@ -9,8 +9,8 @@ import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -21,9 +21,14 @@ import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,6 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.random.Random
 
 class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var size by mutableStateOf(3)
@@ -338,6 +344,8 @@ fun PuzzleScreen(
 
     var time by remember { mutableStateOf(0L) }
     var showHintDialog by remember { mutableStateOf(false) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var showCelebration by remember { mutableStateOf(false) }
 
     LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.isLoading) {
         while (!viewModel.isComplete && !viewModel.isLoading) {
@@ -353,8 +361,6 @@ fun PuzzleScreen(
     }
 
     val view = LocalView.current
-    val scope = rememberCoroutineScope()
-
     val clickSoundPlayer = remember {
         try { MediaPlayer.create(context, R.raw.tile_click) } catch (e: Exception) { null }
     }
@@ -378,95 +384,167 @@ fun PuzzleScreen(
 
     LaunchedEffect(viewModel.isComplete) {
         if (viewModel.isComplete) {
-            delay(300)
+            // Immediate feedback first
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             winSoundPlayer?.start()
+            
+            // Start the visual celebration
+            showCelebration = true
+            
+            // After the celebration has played for a bit, show the results
+            delay(200) 
+            showBottomSheet = true
+        } else {
+            showBottomSheet = false
+            showCelebration = false
         }
     }
 
     val sheetState = rememberModalBottomSheetState()
-    if (viewModel.isComplete) {
-        ModalBottomSheet(
-            onDismissRequest = onMenuClick,
-            sheetState = sheetState,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp)
-                    .navigationBarsPadding(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text("🎉 Tebrikler!", style = MaterialTheme.typography.headlineMedium)
-                if (viewModel.isNewHighScore) {
-                    Text("🏆 Yeni Rekor: ${viewModel.finalScore} Puan!", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-                } else {
-                    Text("Sadece ${viewModel.moves} hamlede tamamladın!\nPuan: ${viewModel.finalScore}")
+
+    Box(Modifier.fillMaxSize()) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            if (viewModel.isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onMenuClick) { Text("Menü") }
-                    Button(onClick = onNewGameClick) { Text("Yeni Oyun") }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .systemBarsPadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            label = "Hamle",
+                            value = viewModel.moves.toString(),
+                            icon = Icons.Default.SyncAlt
+                        )
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            label = "Süre",
+                            value = formattedTime,
+                            icon = Icons.Default.Timer
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    PuzzleBoard(viewModel)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = onMenuClick) { Text("Menü") }
+                        ShuffleButton(onClick = onNewGameClick)
+                        Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
+                        if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                            Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
+                        }
+                    }
                 }
             }
         }
-    }
 
-    if (showHintDialog) {
-        HintDialog(
-            imageUri = viewModel.imageUri,
-            onDismiss = { showHintDialog = false }
-        )
-    }
+        if (showCelebration) {
+            CelebrationEffect() 
+        }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        if (viewModel.isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-                    .systemBarsPadding(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+        if (showBottomSheet) {
+            ModalBottomSheet(
+                onDismissRequest = onMenuClick,
+                sheetState = sheetState,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                        .navigationBarsPadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "Hamle",
-                        value = viewModel.moves.toString(),
-                        icon = Icons.Default.SyncAlt
-                    )
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "Süre",
-                        value = formattedTime,
-                        icon = Icons.Default.Timer
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                PuzzleBoard(viewModel)
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = onMenuClick) { Text("Menü") }
-                    ShuffleButton(onClick = onNewGameClick)
-                    Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
-                    if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-                        Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
+                    Text("🎉 Tebrikler!", style = MaterialTheme.typography.headlineMedium)
+                    if (viewModel.isNewHighScore) {
+                        Text("🏆 Yeni Rekor: ${viewModel.finalScore} Puan!", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Sadece ${viewModel.moves} hamlede tamamladın!\nPuan: ${viewModel.finalScore}")
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onMenuClick) { Text("Menü") }
+                        Button(onClick = onNewGameClick) { Text("Yeni Oyun") }
+                    }
+                }
+            }
+        }
+
+        if (showHintDialog) {
+            HintDialog(
+                imageUri = viewModel.imageUri,
+                onDismiss = { showHintDialog = false }
+            )
+        }
+    }
+}
+
+@Composable
+fun CelebrationEffect() {
+    val particles = remember { List(15) { Particle() } }
+    var startTime by remember { mutableStateOf(0L) }
+
+    val transition = rememberInfiniteTransition(label = "celebration")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "celebration_progress"
+    )
+
+    LaunchedEffect(Unit) {
+        startTime = System.currentTimeMillis()
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (progress > 0) {
+            particles.forEach { particle ->
+                val currentRadius = particle.radius * (1 - progress)
+                if (currentRadius > 0) {
+                    drawCircle(
+                        color = particle.color,
+                        radius = currentRadius,
+                        center = particle.offset * size.width,
+                        alpha = (1 - progress)
+                    )
                 }
             }
         }
     }
 }
+
+data class Particle(
+    val color: Color,
+    val offset: Offset,
+    val radius: Float
+) {
+    companion object {
+        private val colors = listOf(Color(0xFFfce18a), Color(0xFFff726d), Color(0xFFf4306d), Color(0xFFb48def))
+        operator fun invoke(): Particle {
+            return Particle(
+                color = colors.random(),
+                offset = Offset(Random.nextFloat(), Random.nextFloat()),
+                radius = Random.nextDouble(10.0, 40.0).toFloat()
+            )
+        }
+    }
+}
+
 
 @Composable
 fun StatCard(modifier: Modifier = Modifier, label: String, value: String, icon: ImageVector) {
