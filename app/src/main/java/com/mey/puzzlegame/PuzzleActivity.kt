@@ -52,6 +52,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.random.Random
 
 class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
@@ -493,36 +495,36 @@ fun PuzzleScreen(
 
 @Composable
 fun CelebrationEffect() {
-    val particles = remember { List(15) { Particle() } }
-    var startTime by remember { mutableStateOf(0L) }
-
-    val transition = rememberInfiniteTransition(label = "celebration")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "celebration_progress"
-    )
+    val particles = remember { List(50) { Particle() } } 
+    val progress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        startTime = System.currentTimeMillis()
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 2000, easing = LinearOutSlowInEasing)
+        )
     }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        if (progress > 0) {
-            particles.forEach { particle ->
-                val currentRadius = particle.radius * (1 - progress)
-                if (currentRadius > 0) {
-                    drawCircle(
-                        color = particle.color,
-                        radius = currentRadius,
-                        center = particle.offset * size.width,
-                        alpha = (1 - progress)
-                    )
-                }
+        val canvasCenter = center
+        val animationProgress = progress.value
+
+        particles.forEach { particle ->
+            val currentDistance = particle.initialSpeed * animationProgress
+            val currentOffset = Offset(
+                x = canvasCenter.x + (currentDistance * cos(particle.angle)).toFloat(),
+                y = canvasCenter.y + (currentDistance * sin(particle.angle)).toFloat()
+            )
+            val alpha = 1f - animationProgress
+            val radius = particle.initialRadius * (1f - animationProgress)
+
+            if (radius > 0) {
+                drawCircle(
+                    color = particle.color,
+                    center = currentOffset,
+                    radius = radius,
+                    alpha = alpha
+                )
             }
         }
     }
@@ -530,16 +532,25 @@ fun CelebrationEffect() {
 
 data class Particle(
     val color: Color,
-    val offset: Offset,
-    val radius: Float
+    val initialSpeed: Float,
+    val angle: Double,
+    val initialRadius: Float
 ) {
     companion object {
-        private val colors = listOf(Color(0xFFfce18a), Color(0xFFff726d), Color(0xFFf4306d), Color(0xFFb48def))
+        private val colors = listOf(
+            Color(0xFFfce18a), Color(0xFFff726d), Color(0xFFf4306d), Color(0xFFb48def), // Original
+            Color(0xFF42A5F5), // Light Blue
+            Color(0xFF66BB6A), // Light Green
+            Color(0xFFFFEE58), // Light Yellow
+            Color(0xFFFFA726)  // Orange
+        )
+
         operator fun invoke(): Particle {
             return Particle(
                 color = colors.random(),
-                offset = Offset(Random.nextFloat(), Random.nextFloat()),
-                radius = Random.nextDouble(10.0, 40.0).toFloat()
+                initialSpeed = Random.nextDouble(200.0, 500.0).toFloat(),
+                angle = Random.nextDouble(0.0, 2 * Math.PI),
+                initialRadius = Random.nextDouble(15.0, 45.0).toFloat()
             )
         }
     }
