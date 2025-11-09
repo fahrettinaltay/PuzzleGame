@@ -233,8 +233,8 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
         viewModelScope.launch {
             val timeElapsed = (timeWhenPaused + (System.currentTimeMillis() - startTime)) / 1000
             val difficultyMultiplier = when (size) { 3 -> 1.0; 4 -> 1.5; 5 -> 2.0; else -> 1.0 }
-            val movePenalty = 10
-            val timePenalty = 5
+            val movePenalty = 5
+            val timePenalty = 1
             val baseScore = 10000
             finalScore = ((baseScore * difficultyMultiplier) - (moves * movePenalty) - (timeElapsed * timePenalty)).toInt().coerceAtLeast(0)
             val oldHighScore = dataStore.getHighScore(size).first()
