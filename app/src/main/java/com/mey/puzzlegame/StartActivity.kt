@@ -294,16 +294,22 @@ fun StartScreen(
             }
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isDarkTheme) "🌙" else "☀️", fontSize = 24.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
-            }
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isDarkTheme) "Koyu Tema 🌙" else "Açık Tema ☀️", fontSize = 16.sp)
+                }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🔢 Numaraları Göster", fontSize = 16.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
+                    Spacer(Modifier.width(8.dp))
+                    Text("Numaraları Göster", fontSize = 16.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
