@@ -130,15 +130,10 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     }
 
     fun solvePuzzle() {
-        var n = 1
-        for (r in 0 until size) {
-            for (c in 0 until size) {
-                values[r][c] = n++
-            }
-        }
+        initValues() // Correctly sets the board to the solved state
         isComplete = true
-        values = values.copyOf()
-        viewModelScope.launch { dataStore.clearSavedGame() }
+        values = values.copyOf() // Ensure UI recomposes
+        calculateAndSaveScore() // Calculate and save the final score
     }
 
     fun saveState() {
