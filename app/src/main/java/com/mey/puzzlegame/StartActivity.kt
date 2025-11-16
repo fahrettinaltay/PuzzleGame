@@ -17,10 +17,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
@@ -135,7 +138,7 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
         _searchQuery.value = query
     }
 
-    fun onPixabayImageSelected(uri: String) {
+    fun onImageSelected(uri: String?) {
         _selectedImageUri.value = uri
     }
 
@@ -226,20 +229,9 @@ fun StartScreen(
     onStartPuzzle: (Int, String?) -> Unit,
     viewModel: StartViewModel = viewModel(factory = viewModelFactory)
 ) {
-    val context = LocalContext.current
     val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
     val showTileNumbers by viewModel.showTileNumbers.collectAsState(initial = false)
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri: Uri? -> viewModel.onGalleryImageSelected(uri, context) }
-    )
-
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val searchResults by viewModel.searchResults.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
 
     var showNewGameDialog by remember { mutableStateOf(false) }
@@ -299,9 +291,11 @@ fun StartScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
-                .padding(24.dp),
+                .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(modifier = Modifier.height(16.dp))
+            // App Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -317,157 +311,241 @@ fun StartScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Puzzle Game", fontSize = 32.sp, fontWeight = FontWeight.Bold)
             }
+
             Spacer(modifier = Modifier.height(16.dp))
 
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (isDarkTheme) "Koyu Tema 🌙" else "Açık Tema ☀️", fontSize = 16.sp)
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
-                    Spacer(Modifier.width(8.dp))
-                    Text("Numaraları Göster", fontSize = 16.sp)
-                    IconButton(
-                        onClick = { showInfoDialog = true },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Numaraları Göster hakkında bilgi",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            // Settings Section
+            Box(contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.Start) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isDarkTheme) "Koyu Tema 🌙" else "Açık Tema ☀️", fontSize = 16.sp)
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            AnimatedVisibility(visible = savedGame != null) {
-                SavedGameCard(gameState = savedGame, onContinue = onStartPuzzle, onDelete = { viewModel.clearSavedGame() })
-            }
-
-            Text("1. Bir Resim Seçin", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.onSearchQueryChange(it) },
-                label = { Text("Pixabay'de resim ara...") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else if (searchResults.isNotEmpty()) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 100.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(searchResults) { index, image ->
-                            if (index == searchResults.size - 1) {
-                                LaunchedEffect(Unit) { viewModel.loadMoreResults() }
-                            }
-                            AsyncImage(
-                                model = image.webformatURL,
-                                contentDescription = "Pixabay Image",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.onPixabayImageSelected(image.largeImageURL) }
-                                    .border(
-                                        width = 3.dp,
-                                        color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = showTileNumbers,
+                            onCheckedChange = { viewModel.onShowTileNumbersChange() })
+                        Spacer(Modifier.width(8.dp))
+                        Text("Numaraları Göster", fontSize = 16.sp)
+                        IconButton(
+                            onClick = { showInfoDialog = true },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Numaraları Göster hakkında bilgi",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        if (isLoadingMore) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-                        }
                     }
-                } else if (searchQuery.length > 2) {
-                    Text(
-                        text = "'$searchQuery' için sonuç bulunamadı.",
-                        modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    galleryLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("🖼️ Veya Galeriden Resim Seç")
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text("2. Zorluk Seviyesi Seçin", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            AnimatedVisibility(visible = selectedImageUri == null && savedGame == null) {
-                Text(
-                    text = "Lütfen oyuna başlamak için bir resim seçin",
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            val handleDifficultyClick = { size: Int ->
-                if (savedGame != null) {
-                    pendingNewGameSize = size
-                    showNewGameDialog = true
-                } else {
-                    onStartPuzzle(size, selectedImageUri)
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                val easyHighScore by viewModel.getHighScore(3).collectAsState()
-                val mediumHighScore by viewModel.getHighScore(4).collectAsState()
-                val hardHighScore by viewModel.getHighScore(5).collectAsState()
-
-                DifficultyButton(text = "🟢 Kolay (3×3)", score = easyHighScore, enabled = selectedImageUri != null, onClick = { handleDifficultyClick(3) })
-                DifficultyButton(text = "🟡 Orta (4×4)", score = mediumHighScore, enabled = selectedImageUri != null, onClick = { handleDifficultyClick(4) })
-                DifficultyButton(text = "🔴 Zor (5×5)", score = hardHighScore, enabled = selectedImageUri != null, onClick = { handleDifficultyClick(5) })
+            val currentImageUri = selectedImageUri
+            if (currentImageUri == null) {
+                ImageSelectionContent(viewModel, onStartPuzzle)
+            } else {
+                DifficultySelectionContent(viewModel, currentImageUri, onStartPuzzle)
             }
         }
     }
 }
+
+@Composable
+fun ImageSelectionContent(
+    viewModel: StartViewModel,
+    onStartPuzzle: (Int, String?) -> Unit
+) {
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val savedGame by viewModel.savedGameState.collectAsState()
+    val selectedImageUri by viewModel.selectedImageUri.collectAsState()
+    val context = LocalContext.current
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri: Uri? -> viewModel.onGalleryImageSelected(uri, context) }
+    )
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // --- FIXED CONTENT ---
+        if (savedGame != null) {
+            SavedGameCard(
+                gameState = savedGame,
+                onContinue = onStartPuzzle,
+                onDelete = { viewModel.clearSavedGame() })
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        Text("1. Bir Resim Seçin", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { viewModel.onSearchQueryChange(it) },
+            label = { Text("Pixabay'de resim ara...") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                galleryLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("🖼️ Veya Galeriden Resim Seç")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- SCROLLABLE CONTENT ---
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 120.dp),
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (isLoading) {
+                item(span = { GridItemSpan(this.maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 64.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else if (searchResults.isEmpty() && searchQuery.length > 2) {
+                item(span = { GridItemSpan(this.maxLineSpan) }) {
+                    Text(
+                        text = "'$searchQuery' için sonuç bulunamadı.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 64.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                itemsIndexed(searchResults) { index, image ->
+                    if (index == searchResults.size - 1) {
+                        LaunchedEffect(Unit) { viewModel.loadMoreResults() }
+                    }
+                    AsyncImage(
+                        model = image.webformatURL,
+                        contentDescription = "Pixabay Image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { viewModel.onImageSelected(image.largeImageURL) }
+                            .border(
+                                width = 3.dp,
+                                color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                    )
+                }
+                if (isLoadingMore) {
+                    item(span = { GridItemSpan(this.maxLineSpan) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DifficultySelectionContent(
+    viewModel: StartViewModel,
+    selectedImageUri: String,
+    onStartPuzzle: (Int, String?) -> Unit,
+) {
+    val savedGame by viewModel.savedGameState.collectAsState()
+    var showNewGameDialog by remember { mutableStateOf(false) }
+    var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        Text("1. Seçilen Resim", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        AsyncImage(
+            model = selectedImageUri,
+            contentDescription = "Seçilen Resim",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth(0.8f)
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = { viewModel.onImageSelected(null) }) {
+            Text("Resmi Değiştir")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text("2. Zorluk Seviyesi Seçin", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        val handleDifficultyClick = { size: Int ->
+            if (savedGame != null) {
+                pendingNewGameSize = size
+                showNewGameDialog = true
+            } else {
+                onStartPuzzle(size, selectedImageUri)
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val easyHighScore by viewModel.getHighScore(3).collectAsState()
+            val mediumHighScore by viewModel.getHighScore(4).collectAsState()
+            val hardHighScore by viewModel.getHighScore(5).collectAsState()
+
+            DifficultyButton(
+                text = "🟢 Kolay (3×3)",
+                score = easyHighScore,
+                enabled = true,
+                onClick = { handleDifficultyClick(3) })
+            DifficultyButton(
+                text = "🟡 Orta (4×4)",
+                score = mediumHighScore,
+                enabled = true,
+                onClick = { handleDifficultyClick(4) })
+            DifficultyButton(
+                text = "🔴 Zor (5×5)",
+                score = hardHighScore,
+                enabled = true,
+                onClick = { handleDifficultyClick(5) })
+        }
+    }
+}
+
 
 @Composable
 fun PuzzleExample() {
@@ -511,8 +589,7 @@ fun SavedGameCard(gameState: GameState?, onContinue: (Int, String?) -> Unit, onD
     gameState ?: return
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp),
+            .fillMaxWidth(),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(
