@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -241,6 +243,7 @@ fun StartScreen(
     val savedGame by viewModel.savedGameState.collectAsState()
 
     var showNewGameDialog by remember { mutableStateOf(false) }
+    var showInfoDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
 
     if (showNewGameDialog) {
@@ -264,6 +267,28 @@ fun StartScreen(
             dismissButton = {
                 TextButton(onClick = { showNewGameDialog = false }) {
                     Text("İptal")
+                }
+            }
+        )
+    }
+
+    if (showInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            icon = { Icon(Icons.Default.Info, contentDescription = null) },
+            title = { Text("Numaraları Göster Nedir?") },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text("Bu ayar aktif olduğunda, bulmaca parçalarının üzerinde orijinal konumlarını gösteren sayılar belirir. Bu, özellikle zorlu bulmacalarda doğru parçayı bulmanıza yardımcı olur.")
+                    PuzzleExample()
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("Anladım")
                 }
             }
         )
@@ -309,6 +334,16 @@ fun StartScreen(
                     Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
                     Spacer(Modifier.width(8.dp))
                     Text("Numaraları Göster", fontSize = 16.sp)
+                    IconButton(
+                        onClick = { showInfoDialog = true },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Numaraları Göster hakkında bilgi",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -433,6 +468,43 @@ fun StartScreen(
         }
     }
 }
+
+@Composable
+fun PuzzleExample() {
+    val pieces = listOf("1", "3", "4", "2") // A shuffled 2x2 grid
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            PuzzlePieceExample(text = pieces[0])
+            PuzzlePieceExample(text = pieces[1])
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            PuzzlePieceExample(text = pieces[2])
+            PuzzlePieceExample(text = pieces[3])
+        }
+    }
+}
+
+@Composable
+fun PuzzlePieceExample(text: String) {
+    Surface(
+        modifier = Modifier.size(50.dp),
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
 
 @Composable
 fun SavedGameCard(gameState: GameState?, onContinue: (Int, String?) -> Unit, onDelete: () -> Unit) {
