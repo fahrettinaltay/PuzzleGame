@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
@@ -36,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,9 +43,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
@@ -87,9 +85,7 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
     private var totalHits = 0
 
     init {
-        viewModelScope.launch {
-            dataStore.savedGameState.collect { _savedGameState.value = it }
-        }
+        checkForSavedGame()
 
         viewModelScope.launch {
             _searchQuery
@@ -102,9 +98,16 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
         }
     }
 
+    fun checkForSavedGame() {
+        viewModelScope.launch {
+            _savedGameState.value = dataStore.savedGameState.first()
+        }
+    }
+
     fun clearSavedGame() {
         viewModelScope.launch {
             dataStore.clearSavedGame()
+            _savedGameState.value = null
         }
     }
 
@@ -176,27 +179,19 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
     }
 
     fun onThemeChange() {
-        viewModelScope.launch {
-            dataStore.toggleTheme()
-        }
+        viewModelScope.launch { dataStore.toggleTheme() }
     }
 
     fun onShowTileNumbersChange() {
-        viewModelScope.launch {
-            dataStore.toggleShowTileNumbers()
-        }
+        viewModelScope.launch { dataStore.toggleShowTileNumbers() }
     }
 
     fun onMoveSoundsChange() {
-        viewModelScope.launch {
-            dataStore.toggleMoveSounds()
-        }
+        viewModelScope.launch { dataStore.toggleMoveSounds() }
     }
 
     fun onCelebrationSoundChange() {
-        viewModelScope.launch {
-            dataStore.toggleCelebrationSound()
-        }
+        viewModelScope.launch { dataStore.toggleCelebrationSound() }
     }
 }
 
@@ -211,7 +206,6 @@ class StartViewModelFactory(private val dataStore: SettingsDataStore, private va
 }
 
 class StartActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -251,6 +245,22 @@ fun StartScreen(
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.checkForSavedGame()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val wrappedOnStartPuzzle = { size: Int, imageUri: String? ->
+        onStartPuzzle(size, imageUri)
+        viewModel.onImageSelected(null)
+    }
+
     var showNewGameDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
@@ -265,18 +275,14 @@ fun StartScreen(
                     onClick = {
                         viewModel.clearSavedGame()
                         pendingNewGameSize?.let { size ->
-                            onStartPuzzle(size, selectedImageUri)
+                            wrappedOnStartPuzzle(size, selectedImageUri)
                         }
                         showNewGameDialog = false
                     }
-                ) {
-                    Text("Yeni Başla")
-                }
+                ) { Text("Yeni Başla") }
             },
             dismissButton = {
-                TextButton(onClick = { showNewGameDialog = false }) {
-                    Text("İptal")
-                }
+                TextButton(onClick = { showNewGameDialog = false }) { Text("İptal") }
             }
         )
     }
@@ -296,9 +302,7 @@ fun StartScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showInfoDialog = false }) {
-                    Text("Anladım")
-                }
+                TextButton(onClick = { showInfoDialog = false }) { Text("Anladım") }
             }
         )
     }
@@ -312,7 +316,6 @@ fun StartScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            // App Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -321,9 +324,7 @@ fun StartScreen(
                     painter = painterResource(id = R.drawable.logo),
                     contentDescription = "App Logo",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Puzzle Game", fontSize = 32.sp, fontWeight = FontWeight.Bold)
@@ -331,7 +332,6 @@ fun StartScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Settings Section
             Box(contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.Start) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -340,9 +340,7 @@ fun StartScreen(
                         Text(if (isDarkTheme) "Koyu Tema 🌙" else "Açık Tema ☀️", fontSize = 16.sp)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = showTileNumbers,
-                            onCheckedChange = { viewModel.onShowTileNumbersChange() })
+                        Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
                         Spacer(Modifier.width(8.dp))
                         Text("Numaraları Göster", fontSize = 16.sp)
                         IconButton(
@@ -357,16 +355,12 @@ fun StartScreen(
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = moveSoundsEnabled,
-                            onCheckedChange = { viewModel.onMoveSoundsChange() })
+                        Switch(checked = moveSoundsEnabled, onCheckedChange = { viewModel.onMoveSoundsChange() })
                         Spacer(Modifier.width(8.dp))
                         Text("Hareket Sesleri", fontSize = 16.sp)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = celebrationSoundEnabled,
-                            onCheckedChange = { viewModel.onCelebrationSoundChange() })
+                        Switch(checked = celebrationSoundEnabled, onCheckedChange = { viewModel.onCelebrationSoundChange() })
                         Spacer(Modifier.width(8.dp))
                         Text("Kutlama Sesi", fontSize = 16.sp)
                     }
@@ -375,11 +369,10 @@ fun StartScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            val currentImageUri = selectedImageUri
-            if (currentImageUri == null) {
-                ImageSelectionContent(viewModel, onStartPuzzle)
+            if (selectedImageUri != null) {
+                DifficultySelectionContent(viewModel, selectedImageUri!!, wrappedOnStartPuzzle)
             } else {
-                DifficultySelectionContent(viewModel, currentImageUri, onStartPuzzle)
+                ImageSelectionContent(viewModel, wrappedOnStartPuzzle)
             }
         }
     }
@@ -419,7 +412,6 @@ fun ImageSelectionContent(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // --- FIXED CONTENT ---
         if (savedGame != null) {
             SavedGameCard(
                 gameState = savedGame,
@@ -450,7 +442,6 @@ fun ImageSelectionContent(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- SCROLLABLE CONTENT ---
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 120.dp),
             modifier = Modifier.weight(1f),
@@ -460,12 +451,7 @@ fun ImageSelectionContent(
         ) {
             if (isLoading) {
                 item(span = { GridItemSpan(this.maxLineSpan) }) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 64.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
@@ -473,14 +459,12 @@ fun ImageSelectionContent(
                 item(span = { GridItemSpan(this.maxLineSpan) }) {
                     Text(
                         text = "'$searchQuery' için sonuç bulunamadı.",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 64.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
                         textAlign = TextAlign.Center
                     )
                 }
             } else {
-                itemsIndexed(searchResults) { index, image ->
+                itemsIndexed(searchResults) { _, image ->
                     AsyncImage(
                         model = image.webformatURL,
                         contentDescription = "Pixabay Image",
@@ -498,12 +482,7 @@ fun ImageSelectionContent(
                 }
                 if (isLoadingMore) {
                     item(span = { GridItemSpan(this.maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
                         }
                     }
@@ -629,14 +608,11 @@ fun PuzzlePieceExample(text: String) {
 fun SavedGameCard(gameState: GameState?, onContinue: (Int, String?) -> Unit, onDelete: () -> Unit) {
     gameState ?: return
     Card(
-        modifier = Modifier
-            .fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -645,9 +621,7 @@ fun SavedGameCard(gameState: GameState?, onContinue: (Int, String?) -> Unit, onD
                     model = gameState.imageUri,
                     contentDescription = "Saved Game Thumbnail",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                    modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
@@ -672,9 +646,7 @@ fun DifficultyButton(text: String, score: Int, enabled: Boolean, onClick: () -> 
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
+        modifier = Modifier.fillMaxWidth().height(56.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
