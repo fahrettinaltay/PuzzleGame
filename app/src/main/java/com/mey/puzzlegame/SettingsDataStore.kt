@@ -33,6 +33,8 @@ class SettingsDataStore(private val context: Context) {
         private val THEME_KEY = booleanPreferencesKey("dark_theme")
         private val SHOW_TILE_NUMBERS = booleanPreferencesKey("show_tile_numbers")
         private val SAVED_GAME_STATE = stringPreferencesKey("saved_game_state")
+        private val MOVE_SOUNDS_KEY = booleanPreferencesKey("move_sounds_enabled")
+        private val CELEBRATION_SOUND_KEY = booleanPreferencesKey("celebration_sound_enabled")
     }
 
     // --- Game State Persistence ---
@@ -101,6 +103,26 @@ class SettingsDataStore(private val context: Context) {
     suspend fun toggleShowTileNumbers() {
         context.dataStore.edit {
             it[SHOW_TILE_NUMBERS] = !(it[SHOW_TILE_NUMBERS] ?: false)
+        }
+    }
+
+    // --- Move Sounds ---
+    val moveSoundsEnabled: Flow<Boolean>
+        get() = context.dataStore.data.map { it[MOVE_SOUNDS_KEY] ?: true }
+
+    suspend fun toggleMoveSounds() {
+        context.dataStore.edit {
+            it[MOVE_SOUNDS_KEY] = !(it[MOVE_SOUNDS_KEY] ?: true)
+        }
+    }
+
+    // --- Celebration Sound ---
+    val celebrationSoundEnabled: Flow<Boolean>
+        get() = context.dataStore.data.map { it[CELEBRATION_SOUND_KEY] ?: true }
+
+    suspend fun toggleCelebrationSound() {
+        context.dataStore.edit {
+            it[CELEBRATION_SOUND_KEY] = !(it[CELEBRATION_SOUND_KEY] ?: true)
         }
     }
 }

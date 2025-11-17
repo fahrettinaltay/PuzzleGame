@@ -300,6 +300,8 @@ class PuzzleActivity : ComponentActivity() {
         setContent {
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
             val showTileNumbers by dataStore.showTileNumbers.collectAsState(initial = false)
+            val moveSoundsEnabled by dataStore.moveSoundsEnabled.collectAsState(initial = true)
+            val celebrationSoundEnabled by dataStore.celebrationSoundEnabled.collectAsState(initial = true)
             viewModel = viewModel(factory = viewModelFactory)
 
             PuzzleGameTheme(darkTheme = isDark) {
@@ -310,6 +312,8 @@ class PuzzleActivity : ComponentActivity() {
                     imageUriString = imageUriString,
                     viewModel = viewModel,
                     showTileNumbers = showTileNumbers,
+                    moveSoundsEnabled = moveSoundsEnabled,
+                    celebrationSoundEnabled = celebrationSoundEnabled,
                     onMenuClick = {
                         finish() // onStop will save the state
                     },
@@ -336,6 +340,8 @@ fun PuzzleScreen(
     imageUriString: String?,
     viewModel: PuzzleViewModel,
     showTileNumbers: Boolean,
+    moveSoundsEnabled: Boolean,
+    celebrationSoundEnabled: Boolean,
     onMenuClick: () -> Unit,
     onNewGameClick: () -> Unit
 ) {
@@ -378,7 +384,7 @@ fun PuzzleScreen(
     }
 
     LaunchedEffect(viewModel.moves) {
-        if (viewModel.moves > 0 && !viewModel.isLoading) {
+        if (viewModel.moves > 0 && !viewModel.isLoading && moveSoundsEnabled) {
             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             clickSoundPlayer?.start()
         }
@@ -386,9 +392,10 @@ fun PuzzleScreen(
 
     LaunchedEffect(viewModel.isComplete) {
         if (viewModel.isComplete) {
-            // Immediate feedback first
-            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            winSoundPlayer?.start()
+            if (celebrationSoundEnabled) {
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                winSoundPlayer?.start()
+            }
 
             // Start the visual celebration
             showCelebration = true

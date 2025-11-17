@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,6 +61,8 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
 
     val isDarkTheme = dataStore.isDarkTheme
     val showTileNumbers = dataStore.showTileNumbers
+    val moveSoundsEnabled = dataStore.moveSoundsEnabled
+    val celebrationSoundEnabled = dataStore.celebrationSoundEnabled
     private val pixabayService = PixabayService()
 
     private val _searchQuery = MutableStateFlow("")
@@ -113,7 +116,7 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
             val response = pixabayService.searchImages(query, lang, currentPage)
             if (response != null) {
                 _searchResults.value = response.hits
-                totalHits = response.totalHits
+                totalHits = response.totalHits.coerceAtMost(500)
             } else {
                 totalHits = 0
             }
@@ -183,6 +186,18 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
             dataStore.toggleShowTileNumbers()
         }
     }
+
+    fun onMoveSoundsChange() {
+        viewModelScope.launch {
+            dataStore.toggleMoveSounds()
+        }
+    }
+
+    fun onCelebrationSoundChange() {
+        viewModelScope.launch {
+            dataStore.toggleCelebrationSound()
+        }
+    }
 }
 
 class StartViewModelFactory(private val dataStore: SettingsDataStore, private val lang: String) : ViewModelProvider.Factory {
@@ -231,6 +246,8 @@ fun StartScreen(
 ) {
     val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
     val showTileNumbers by viewModel.showTileNumbers.collectAsState(initial = false)
+    val moveSoundsEnabled by viewModel.moveSoundsEnabled.collectAsState(initial = true)
+    val celebrationSoundEnabled by viewModel.celebrationSoundEnabled.collectAsState(initial = true)
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
 
@@ -339,6 +356,20 @@ fun StartScreen(
                             )
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = moveSoundsEnabled,
+                            onCheckedChange = { viewModel.onMoveSoundsChange() })
+                        Spacer(Modifier.width(8.dp))
+                        Text("Hareket Sesleri", fontSize = 16.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = celebrationSoundEnabled,
+                            onCheckedChange = { viewModel.onCelebrationSoundChange() })
+                        Spacer(Modifier.width(8.dp))
+                        Text("Kutlama Sesi", fontSize = 16.sp)
+                    }
                 }
             }
 
@@ -371,6 +402,18 @@ fun ImageSelectionContent(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri: Uri? -> viewModel.onGalleryImageSelected(uri, context) }
     )
+
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull() }
+            .filterNotNull()
+            .collect { lastVisibleItem ->
+                if (lastVisibleItem.index >= gridState.layoutInfo.totalItemsCount - 5) {
+                    viewModel.loadMoreResults()
+                }
+            }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -411,6 +454,7 @@ fun ImageSelectionContent(
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 120.dp),
             modifier = Modifier.weight(1f),
+            state = gridState,
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -437,9 +481,6 @@ fun ImageSelectionContent(
                 }
             } else {
                 itemsIndexed(searchResults) { index, image ->
-                    if (index == searchResults.size - 1) {
-                        LaunchedEffect(Unit) { viewModel.loadMoreResults() }
-                    }
                     AsyncImage(
                         model = image.webformatURL,
                         contentDescription = "Pixabay Image",
