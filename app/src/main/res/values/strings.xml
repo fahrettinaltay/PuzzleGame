@@ -1,6 +1,52 @@
 <resources>
     <string name="app_name">Puzzle Game</string>
-    <string name="easy">Easy (3x3)</string>
-    <string name="medium">Medium (4x4)</string>
-    <string name="hard">Hard (5x5)</string>
+
+    <!-- Start Screen -->
+    <string name="start_new_game_title">Yeni Oyuna Başla?</string>
+    <string name="start_new_game_description">Devam eden bir oyununuz var. Yeni bir oyuna başlamak mevcut ilerlemenizi silecek. Emin misiniz?</string>
+    <string name="start_new_game_confirm">Yeni Başla</string>
+    <string name="cancel">İptal</string>
+    <string name="continue_game">Devam Et</string>
+    <string name="saved_game">Kaydedilmiş Oyun</string>
+    <string name="saved_game_details">%1$dx%1$d | %2$d hamle</string>
+    <string name="delete_saved_game">Kaydedilmiş Oyunu Sil</string>
+
+    <!-- Settings -->
+    <string name="settings_dark_theme_on">Koyu Tema 🌙</string>
+    <string name="settings_dark_theme_off">Açık Tema ☀️</string>
+    <string name="settings_show_tile_numbers">Numaraları Göster</string>
+    <string name="settings_show_tile_numbers_info_title">Numaraları Göster Nedir?</string>
+    <string name="settings_show_tile_numbers_info_desc">Bu ayar aktif olduğunda, bulmaca parçalarının üzerinde orijinal konumlarını gösteren sayılar belirir. Bu, özellikle zorlu bulmacalarda doğru parçayı bulmanıza yardımcı olur.</string>
+    <string name="got_it">Anladım</string>
+    <string name="settings_move_sounds">Hareket Sesleri</string>
+    <string name="settings_celebration_sound">Kutlama Sesi</string>
+    <string name="settings_language">Dil</string>
+
+    <!-- Image Selection -->
+    <string name="step_1_select_image">1. Bir Resim Seçin</string>
+    <string name="search_pixabay">Pixabay\'de resim ara…</string>
+    <string name="select_from_gallery">🖼️ Veya Galeriden Resim Seç</string>
+    <string name="search_no_results">\'%1$s\' için sonuç bulunamadı.</string>
+    <string name="selected_image">Seçilen Resim</string>
+    <string name="change_image">Resmi Değiştir</string>
+
+    <!-- Difficulty -->
+    <string name="step_2_select_difficulty">2. Zorluk Seviyesi Seçin</string>
+    <string name="easy_difficulty">🟢 Kolay (3×3)</string>
+    <string name="medium_difficulty">🟡 Orta (4×4)</string>
+    <string name="hard_difficulty">🔴 Zor (5×5)</string>
+    <string name="high_score">Rekor: %1$d</string>
+
+    <!-- Puzzle Screen -->
+    <string name="puzzle_moves">Hamle</string>
+    <string name="puzzle_time">Süre</string>
+    <string name="puzzle_menu">Menü</string>
+    <string name="puzzle_hint">💡 İpucu</string>
+    <string name="puzzle_shuffle">🔀 Karıştır</string>
+    <string name="puzzle_shuffled">✅ Karıştırıldı</string>
+    <string name="puzzle_congrats">🎉 Tebrikler!</string>
+    <string name="puzzle_congrats_new_high_score">🏆 Yeni Rekor: %1$d Puan!</string>
+    <string name="puzzle_congrats_details">%1$d hamlede tamamladın!\nPuan: %2$d</string>
+    <string name="puzzle_new_game">Yeni Oyun</string>
+    <string name="puzzle_close">Kapat</string>
 </resources>

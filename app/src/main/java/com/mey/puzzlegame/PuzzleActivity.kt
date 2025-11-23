@@ -26,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -36,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -433,13 +433,13 @@ fun PuzzleScreen(
                     ) {
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            label = "Hamle",
+                            label = stringResource(id = R.string.puzzle_moves),
                             value = viewModel.moves.toString(),
                             icon = Icons.Default.SyncAlt
                         )
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            label = "Süre",
+                            label = stringResource(id = R.string.puzzle_time),
                             value = formattedTime,
                             icon = Icons.Default.Timer
                         )
@@ -449,9 +449,9 @@ fun PuzzleScreen(
                     PuzzleBoard(viewModel, showTileNumbers)
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = onMenuClick) { Text("Menü") }
+                        Button(onClick = onMenuClick) { Text(stringResource(id = R.string.puzzle_menu)) }
                         ShuffleButton(onClick = onNewGameClick)
-                        Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
+                        Button(onClick = { showHintDialog = true }) { Text(stringResource(id = R.string.puzzle_hint)) }
                     }
                 }
             }
@@ -474,15 +474,19 @@ fun PuzzleScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("🎉 Tebrikler!", style = MaterialTheme.typography.headlineMedium)
+                    Text(stringResource(id = R.string.puzzle_congrats), style = MaterialTheme.typography.headlineMedium)
                     if (viewModel.isNewHighScore) {
-                        Text("🏆 Yeni Rekor: ${viewModel.finalScore} Puan!", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                        Text(
+                            stringResource(id = R.string.puzzle_congrats_new_high_score, viewModel.finalScore),
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.Bold
+                        )
                     } else {
-                        Text("Sadece ${viewModel.moves} hamlede tamamladın!\nPuan: ${viewModel.finalScore}")
+                        Text(stringResource(id = R.string.puzzle_congrats_details, viewModel.moves, viewModel.finalScore))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onMenuClick) { Text("Menü") }
-                        Button(onClick = onNewGameClick) { Text("Yeni Oyun") }
+                        Button(onClick = onMenuClick) { Text(stringResource(id = R.string.puzzle_menu)) }
+                        Button(onClick = onNewGameClick) { Text(stringResource(id = R.string.puzzle_new_game)) }
                     }
                 }
             }
@@ -594,7 +598,7 @@ fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = onDismiss) {
-                    Text("Kapat")
+                    Text(stringResource(id = R.string.puzzle_close))
                 }
             }
         )
@@ -707,7 +711,7 @@ fun PuzzleTile(
 fun ShuffleButton(onClick: () -> Unit) {
     val scope = rememberCoroutineScope()
     var isShuffling by remember { mutableStateOf(false) }
-    val buttonText = if (isShuffling) "✅ Karıştırıldı" else "🔀 Karıştır"
+    val buttonText = if (isShuffling) stringResource(id = R.string.puzzle_shuffled) else stringResource(id = R.string.puzzle_shuffle)
 
     Button(onClick = {
         isShuffling = true

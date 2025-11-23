@@ -66,13 +66,8 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:2.3.12")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
-    // implementation("io.ktor:ktor-client-logging:2.3.12") // Çökmeye neden olan hayalet kütüphane kaldırıldı.
-
-    // SLF4J for Ktor logging - Bu kütüphane, CIO motoru ile Türkçe karakter çakışmasına neden olduğu için kaldırıldı.
-    // implementation("org.slf4j:slf4j-android:1.7.32")
 
     implementation("androidx.core:core-ktx:1.15.0")
-    // implementation(libs.androidx.material3) // Bu satır, BOM ile çakışmaya neden olduğu için kaldırıldı.
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

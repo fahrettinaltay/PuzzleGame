@@ -2,6 +2,7 @@ package com.mey.puzzlegame
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -37,6 +38,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -55,7 +57,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 @OptIn(FlowPreview::class)
-class StartViewModel(private val dataStore: SettingsDataStore, private val lang: String) : ViewModel() {
+class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
 
     val isDarkTheme = dataStore.isDarkTheme
     val showTileNumbers = dataStore.showTileNumbers
@@ -81,6 +83,8 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
     private val _selectedImageUri = MutableStateFlow<String?>(null)
     val selectedImageUri = _selectedImageUri.asStateFlow()
 
+    val language = dataStore.language.stateIn(viewModelScope, SharingStarted.Eagerly, "en")
+
     private var currentPage = 1
     private var totalHits = 0
 
@@ -88,12 +92,12 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
         checkForSavedGame()
 
         viewModelScope.launch {
-            _searchQuery
+            combine(searchQuery, language) { query, lang -> query to lang }
                 .debounce(500)
-                .filter { it.length > 2 }
+                .filter { (query, _) -> query.length > 2 }
                 .distinctUntilChanged()
-                .collect { query ->
-                    searchImages(query)
+                .collect { (query, lang) ->
+                    searchImages(query, lang)
                 }
         }
     }
@@ -111,7 +115,7 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
         }
     }
 
-    private fun searchImages(query: String) {
+    private fun searchImages(query: String, lang: String) {
         viewModelScope.launch {
             _isLoading.value = true
             currentPage = 1
@@ -132,7 +136,7 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
         viewModelScope.launch {
             _isLoadingMore.value = true
             currentPage++
-            val response = pixabayService.searchImages(_searchQuery.value, lang, currentPage)
+            val response = pixabayService.searchImages(_searchQuery.value, language.value, currentPage)
             if (response != null) {
                 _searchResults.value = _searchResults.value + response.hits
             }
@@ -193,13 +197,17 @@ class StartViewModel(private val dataStore: SettingsDataStore, private val lang:
     fun onCelebrationSoundChange() {
         viewModelScope.launch { dataStore.toggleCelebrationSound() }
     }
+
+    fun onLanguageChange(lang: String) {
+        viewModelScope.launch { dataStore.setLanguage(lang) }
+    }
 }
 
-class StartViewModelFactory(private val dataStore: SettingsDataStore, private val lang: String) : ViewModelProvider.Factory {
+class StartViewModelFactory(private val dataStore: SettingsDataStore) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(StartViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return StartViewModel(dataStore, lang) as T
+            return StartViewModel(dataStore) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -211,14 +219,21 @@ class StartActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val dataStore = SettingsDataStore(this)
-        val lang = Locale.getDefault().language
 
         setContent {
+            val language by dataStore.language.collectAsState(initial = Locale.getDefault().language)
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+
+            val locale = Locale(language)
+            Locale.setDefault(locale)
+            val config = Configuration()
+            config.setLocale(locale)
+            LocalContext.current.resources.updateConfiguration(config, LocalContext.current.resources.displayMetrics)
+
 
             PuzzleGameTheme(darkTheme = isDark) {
                 StartScreen(
-                    viewModelFactory = StartViewModelFactory(dataStore, lang),
+                    viewModelFactory = StartViewModelFactory(dataStore),
                     onStartPuzzle = { size, imageUri ->
                         val intent = Intent(this, PuzzleActivity::class.java).apply {
                             putExtra("SIZE", size)
@@ -244,6 +259,7 @@ fun StartScreen(
     val celebrationSoundEnabled by viewModel.celebrationSoundEnabled.collectAsState(initial = true)
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
+    val language by viewModel.language.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -263,13 +279,14 @@ fun StartScreen(
 
     var showNewGameDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
 
     if (showNewGameDialog) {
         AlertDialog(
             onDismissRequest = { showNewGameDialog = false },
-            title = { Text("Yeni Oyuna Başla?") },
-            text = { Text("Devam eden bir oyununuz var. Yeni bir oyuna başlamak mevcut ilerlemenizi silecek. Emin misiniz?") },
+            title = { Text(stringResource(id = R.string.start_new_game_title)) },
+            text = { Text(stringResource(id = R.string.start_new_game_description)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -279,10 +296,10 @@ fun StartScreen(
                         }
                         showNewGameDialog = false
                     }
-                ) { Text("Yeni Başla") }
+                ) { Text(stringResource(id = R.string.start_new_game_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showNewGameDialog = false }) { Text("İptal") }
+                TextButton(onClick = { showNewGameDialog = false }) { Text(stringResource(id = R.string.cancel)) }
             }
         )
     }
@@ -291,19 +308,27 @@ fun StartScreen(
         AlertDialog(
             onDismissRequest = { showInfoDialog = false },
             icon = { Icon(Icons.Default.Info, contentDescription = null) },
-            title = { Text("Numaraları Göster Nedir?") },
+            title = { Text(stringResource(id = R.string.settings_show_tile_numbers_info_title)) },
             text = {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Bu ayar aktif olduğunda, bulmaca parçalarının üzerinde orijinal konumlarını gösteren sayılar belirir. Bu, özellikle zorlu bulmacalarda doğru parçayı bulmanıza yardımcı olur.")
+                    Text(stringResource(id = R.string.settings_show_tile_numbers_info_desc))
                     PuzzleExample()
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showInfoDialog = false }) { Text("Anladım") }
+                TextButton(onClick = { showInfoDialog = false }) { Text(stringResource(id = R.string.got_it)) }
             }
+        )
+    }
+
+    if (showLanguageDialog) {
+        LanguageSelectionDialog(
+            currentLanguage = language,
+            onLanguageSelected = { viewModel.onLanguageChange(it) },
+            onDismiss = { showLanguageDialog = false }
         )
     }
 
@@ -327,7 +352,7 @@ fun StartScreen(
                     modifier = Modifier.size(40.dp).clip(CircleShape)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Puzzle Game", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -337,19 +362,22 @@ fun StartScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
                         Spacer(Modifier.width(8.dp))
-                        Text(if (isDarkTheme) "Koyu Tema 🌙" else "Açık Tema ☀️", fontSize = 16.sp)
+                        Text(
+                            if (isDarkTheme) stringResource(R.string.settings_dark_theme_on) else stringResource(R.string.settings_dark_theme_off),
+                            fontSize = 16.sp
+                        )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
                         Spacer(Modifier.width(8.dp))
-                        Text("Numaraları Göster", fontSize = 16.sp)
+                        Text(stringResource(R.string.settings_show_tile_numbers), fontSize = 16.sp)
                         IconButton(
                             onClick = { showInfoDialog = true },
                             modifier = Modifier.size(24.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Info,
-                                contentDescription = "Numaraları Göster hakkında bilgi",
+                                contentDescription = stringResource(id = R.string.settings_show_tile_numbers_info_title),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -357,12 +385,19 @@ fun StartScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = moveSoundsEnabled, onCheckedChange = { viewModel.onMoveSoundsChange() })
                         Spacer(Modifier.width(8.dp))
-                        Text("Hareket Sesleri", fontSize = 16.sp)
+                        Text(stringResource(R.string.settings_move_sounds), fontSize = 16.sp)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = celebrationSoundEnabled, onCheckedChange = { viewModel.onCelebrationSoundChange() })
                         Spacer(Modifier.width(8.dp))
-                        Text("Kutlama Sesi", fontSize = 16.sp)
+                        Text(stringResource(R.string.settings_celebration_sound), fontSize = 16.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.settings_language), fontSize = 16.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = { showLanguageDialog = true }) {
+                            Text(language.uppercase(Locale.getDefault()))
+                        }
                     }
                 }
             }
@@ -420,12 +455,12 @@ fun ImageSelectionContent(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        Text("1. Bir Resim Seçin", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(id = R.string.step_1_select_image), style = MaterialTheme.typography.titleLarge)
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { viewModel.onSearchQueryChange(it) },
-            label = { Text("Pixabay'de resim ara...") },
+            label = { Text(stringResource(id = R.string.search_pixabay)) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -438,7 +473,7 @@ fun ImageSelectionContent(
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("🖼️ Veya Galeriden Resim Seç")
+            Text(stringResource(id = R.string.select_from_gallery))
         }
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -458,7 +493,7 @@ fun ImageSelectionContent(
             } else if (searchResults.isEmpty() && searchQuery.length > 2) {
                 item(span = { GridItemSpan(this.maxLineSpan) }) {
                     Text(
-                        text = "'$searchQuery' için sonuç bulunamadı.",
+                        text = stringResource(id = R.string.search_no_results, searchQuery),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
                         textAlign = TextAlign.Center
                     )
@@ -509,12 +544,12 @@ fun DifficultySelectionContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
-        Text("1. Seçilen Resim", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(id = R.string.step_1_select_image), style = MaterialTheme.typography.titleLarge)
         Spacer(modifier = Modifier.height(16.dp))
 
         AsyncImage(
             model = selectedImageUri,
-            contentDescription = "Seçilen Resim",
+            contentDescription = stringResource(id = R.string.selected_image),
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth(0.8f)
@@ -525,12 +560,12 @@ fun DifficultySelectionContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = { viewModel.onImageSelected(null) }) {
-            Text("Resmi Değiştir")
+            Text(stringResource(id = R.string.change_image))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text("2. Zorluk Seviyesi Seçin", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(id = R.string.step_2_select_difficulty), style = MaterialTheme.typography.titleLarge)
         Spacer(modifier = Modifier.height(16.dp))
 
         val handleDifficultyClick = { size: Int ->
@@ -548,17 +583,17 @@ fun DifficultySelectionContent(
             val hardHighScore by viewModel.getHighScore(5).collectAsState()
 
             DifficultyButton(
-                text = "🟢 Kolay (3×3)",
+                text = stringResource(id = R.string.easy_difficulty),
                 score = easyHighScore,
                 enabled = true,
                 onClick = { handleDifficultyClick(3) })
             DifficultyButton(
-                text = "🟡 Orta (4×4)",
+                text = stringResource(id = R.string.medium_difficulty),
                 score = mediumHighScore,
                 enabled = true,
                 onClick = { handleDifficultyClick(4) })
             DifficultyButton(
-                text = "🔴 Zor (5×5)",
+                text = stringResource(id = R.string.hard_difficulty),
                 score = hardHighScore,
                 enabled = true,
                 onClick = { handleDifficultyClick(5) })
@@ -619,22 +654,22 @@ fun SavedGameCard(gameState: GameState?, onContinue: (Int, String?) -> Unit, onD
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 AsyncImage(
                     model = gameState.imageUri,
-                    contentDescription = "Saved Game Thumbnail",
+                    contentDescription = stringResource(id = R.string.saved_game),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Kaydedilmiş Oyun", fontWeight = FontWeight.Bold)
-                    Text("${gameState.size}x${gameState.size} | ${gameState.moves} hamle", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(id = R.string.saved_game), fontWeight = FontWeight.Bold)
+                    Text(stringResource(id = R.string.saved_game_details, gameState.size, gameState.moves), style = MaterialTheme.typography.bodySmall)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete Saved Game")
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(id = R.string.delete_saved_game))
                 }
                 Button(onClick = { onContinue(gameState.size, gameState.imageUri) }) {
-                    Text("Devam Et")
+                    Text(stringResource(id = R.string.continue_game))
                 }
             }
         }
@@ -656,10 +691,48 @@ fun DifficultyButton(text: String, score: Int, enabled: Boolean, onClick: () -> 
         ) {
             Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             if (score > 0) {
-                Text("Rekor: $score", fontSize = 14.sp)
+                Text(stringResource(id = R.string.high_score, score), fontSize = 14.sp)
             }
         }
     }
+}
+
+@Composable
+fun LanguageSelectionDialog(
+    currentLanguage: String,
+    onLanguageSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val languages = listOf("en" to "English", "tr" to "Türkçe")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_language)) },
+        text = {
+            Column {
+                languages.forEach { (code, name) ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onLanguageSelected(code) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentLanguage == code,
+                            onClick = { onLanguageSelected(code) }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(name)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(id = R.string.cancel))
+            }
+        }
+    )
 }
 
 @Preview(showBackground = true)

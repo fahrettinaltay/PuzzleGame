@@ -5,124 +5,127 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.runBlocking
+import java.io.IOException
+import java.util.Locale
 
-// Create the DataStore instance, accessible via context
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-@Serializable
-data class GameState(
-    val size: Int,
-    val moves: Int,
-    val elapsedTime: Long, // Store elapsed time instead of start time
-    val imageUri: String?,
-    val puzzle: List<Int> // Flattened list of puzzle values
-)
+class SettingsDataStore(context: Context) {
 
-class SettingsDataStore(private val context: Context) {
+    private val dataStore = context.dataStore
 
     companion object {
-        private fun highScoreKey(size: Int) = intPreferencesKey("high_score_$size")
-        private val THEME_KEY = booleanPreferencesKey("dark_theme")
-        private val SHOW_TILE_NUMBERS = booleanPreferencesKey("show_tile_numbers")
-        private val SAVED_GAME_STATE = stringPreferencesKey("saved_game_state")
-        private val MOVE_SOUNDS_KEY = booleanPreferencesKey("move_sounds_enabled")
-        private val CELEBRATION_SOUND_KEY = booleanPreferencesKey("celebration_sound_enabled")
+        private val IS_DARK_THEME_KEY = booleanPreferencesKey("is_dark_theme")
+        private val SHOW_TILE_NUMBERS_KEY = booleanPreferencesKey("show_tile_numbers")
+        private val MOVE_SOUNDS_KEY = booleanPreferencesKey("move_sounds")
+        private val CELEBRATION_SOUND_KEY = booleanPreferencesKey("celebration_sound")
+        private val HIGH_SCORE_3_KEY = intPreferencesKey("high_score_3")
+        private val HIGH_SCORE_4_KEY = intPreferencesKey("high_score_4")
+        private val HIGH_SCORE_5_KEY = intPreferencesKey("high_score_5")
+        private val SAVED_GAME_STATE_KEY = stringPreferencesKey("saved_game_state")
+        private val LANGUAGE_KEY = stringPreferencesKey("language")
     }
 
-    // --- Game State Persistence ---
+    val isDarkTheme: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[IS_DARK_THEME_KEY] ?: false }
 
-    val savedGameState: Flow<GameState?> = context.dataStore.data.map {
-        it[SAVED_GAME_STATE]?.let { jsonString ->
-            try {
-                Json.decodeFromString<GameState>(jsonString)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null // In case of a deserialization error, return null
-            }
+    val showTileNumbers: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[SHOW_TILE_NUMBERS_KEY] ?: false }
+
+    val moveSoundsEnabled: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[MOVE_SOUNDS_KEY] ?: true }
+
+    val celebrationSoundEnabled: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[CELEBRATION_SOUND_KEY] ?: true }
+
+    val language: Flow<String> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[LANGUAGE_KEY] ?: Locale.getDefault().language }
+
+    suspend fun toggleTheme() {
+        dataStore.edit { preferences ->
+            preferences[IS_DARK_THEME_KEY] = !(preferences[IS_DARK_THEME_KEY] ?: false)
         }
     }
 
-    suspend fun saveGameState(gameState: GameState?) {
-        context.dataStore.edit {
-            if (gameState != null) {
-                it[SAVED_GAME_STATE] = Json.encodeToString(gameState)
-            } else {
-                it.remove(SAVED_GAME_STATE)
+    suspend fun toggleShowTileNumbers() {
+        dataStore.edit { preferences ->
+            preferences[SHOW_TILE_NUMBERS_KEY] = !(preferences[SHOW_TILE_NUMBERS_KEY] ?: false)
+        }
+    }
+
+    suspend fun toggleMoveSounds() {
+        dataStore.edit { preferences ->
+            preferences[MOVE_SOUNDS_KEY] = !(preferences[MOVE_SOUNDS_KEY] ?: true)
+        }
+    }
+
+    suspend fun toggleCelebrationSound() {
+        dataStore.edit { preferences ->
+            preferences[CELEBRATION_SOUND_KEY] = !(preferences[CELEBRATION_SOUND_KEY] ?: true)
+        }
+    }
+
+    suspend fun setLanguage(language: String) {
+        dataStore.edit { preferences ->
+            preferences[LANGUAGE_KEY] = language
+        }
+    }
+
+    fun getHighScore(size: Int): Flow<Int> {
+        val key = when (size) {
+            3 -> HIGH_SCORE_3_KEY
+            4 -> HIGH_SCORE_4_KEY
+            5 -> HIGH_SCORE_5_KEY
+            else -> throw IllegalArgumentException("Unsupported puzzle size: $size")
+        }
+        return dataStore.data
+            .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .map { preferences -> preferences[key] ?: 0 }
+    }
+
+    suspend fun updateHighScore(size: Int, score: Int) {
+        val key = when (size) {
+            3 -> HIGH_SCORE_3_KEY
+            4 -> HIGH_SCORE_4_KEY
+            5 -> HIGH_SCORE_5_KEY
+            else -> throw IllegalArgumentException("Unsupported puzzle size: $size")
+        }
+        dataStore.edit { preferences ->
+            preferences[key] = score
+        }
+    }
+
+    val savedGameState: Flow<GameState?> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences ->
+            preferences[SAVED_GAME_STATE_KEY]?.let {
+                GameState.fromJson(it)
             }
+        }
+
+    suspend fun saveGameState(gameState: GameState) {
+        dataStore.edit { preferences ->
+            preferences[SAVED_GAME_STATE_KEY] = gameState.toJson()
         }
     }
 
     suspend fun clearSavedGame() {
-        context.dataStore.edit {
-            it.remove(SAVED_GAME_STATE)
-        }
-    }
-
-    // --- High Score ---
-
-    fun getHighScore(size: Int): Flow<Int> {
-        return context.dataStore.data.map {
-            it[highScoreKey(size)] ?: 0
-        }
-    }
-
-    suspend fun updateHighScore(size: Int, score: Int) {
-        context.dataStore.edit { settings ->
-            val key = highScoreKey(size)
-            val currentHighScore = settings[key] ?: 0
-            if (score > currentHighScore) {
-                settings[key] = score
-            }
-        }
-    }
-
-    // --- Theme ---
-
-    val isDarkTheme: Flow<Boolean>
-        get() = context.dataStore.data.map { it[THEME_KEY] ?: false }
-
-    suspend fun toggleTheme() {
-        context.dataStore.edit {
-            it[THEME_KEY] = !(it[THEME_KEY] ?: false)
-        }
-    }
-
-    // --- Show Tile Numbers ---
-
-    val showTileNumbers: Flow<Boolean>
-        get() = context.dataStore.data.map { it[SHOW_TILE_NUMBERS] ?: false }
-
-    suspend fun toggleShowTileNumbers() {
-        context.dataStore.edit {
-            it[SHOW_TILE_NUMBERS] = !(it[SHOW_TILE_NUMBERS] ?: false)
-        }
-    }
-
-    // --- Move Sounds ---
-    val moveSoundsEnabled: Flow<Boolean>
-        get() = context.dataStore.data.map { it[MOVE_SOUNDS_KEY] ?: true }
-
-    suspend fun toggleMoveSounds() {
-        context.dataStore.edit {
-            it[MOVE_SOUNDS_KEY] = !(it[MOVE_SOUNDS_KEY] ?: true)
-        }
-    }
-
-    // --- Celebration Sound ---
-    val celebrationSoundEnabled: Flow<Boolean>
-        get() = context.dataStore.data.map { it[CELEBRATION_SOUND_KEY] ?: true }
-
-    suspend fun toggleCelebrationSound() {
-        context.dataStore.edit {
-            it[CELEBRATION_SOUND_KEY] = !(it[CELEBRATION_SOUND_KEY] ?: true)
+        dataStore.edit { preferences ->
+            preferences.remove(SAVED_GAME_STATE_KEY)
         }
     }
 }

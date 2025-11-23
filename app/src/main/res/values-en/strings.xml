@@ -1,0 +1,52 @@
+<resources>
+    <string name="app_name">Puzzle Game</string>
+
+    <!-- Start Screen -->
+    <string name="start_new_game_title">Start New Game?</string>
+    <string name="start_new_game_description">You have a game in progress. Starting a new game will delete your current progress. Are you sure?</string>
+    <string name="start_new_game_confirm">Start New</string>
+    <string name="cancel">Cancel</string>
+    <string name="continue_game">Continue</string>
+    <string name="saved_game">Saved Game</string>
+    <string name="saved_game_details">%1$dx%1$d | %2$d moves</string>
+    <string name="delete_saved_game">Delete Saved Game</string>
+
+    <!-- Settings -->
+    <string name="settings_dark_theme_on">Dark Theme 🌙</string>
+    <string name="settings_dark_theme_off">Light Theme ☀️</string>
+    <string name="settings_show_tile_numbers">Show Tile Numbers</string>
+    <string name="settings_show_tile_numbers_info_title">What is \"Show Numbers\"?</string>
+    <string name="settings_show_tile_numbers_info_desc">When this setting is active, numbers will appear on the puzzle pieces indicating their original position. This helps you find the correct piece, especially in challenging puzzles.</string>
+    <string name="got_it">Got It</string>
+    <string name="settings_move_sounds">Move Sounds</string>
+    <string name="settings_celebration_sound">Celebration Sound</string>
+    <string name="settings_language">Language</string>
+
+    <!-- Image Selection -->
+    <string name="step_1_select_image">1. Select an Image</string>
+    <string name="search_pixabay">Search images on Pixabay…</string>
+    <string name="select_from_gallery">🖼️ Or Select From Gallery</string>
+    <string name="search_no_results">No results found for \'%1$s\'.</string>
+    <string name="selected_image">Selected Image</string>
+    <string name="change_image">Change Image</string>
+
+    <!-- Difficulty -->
+    <string name="step_2_select_difficulty">2. Select Difficulty</string>
+    <string name="easy_difficulty">🟢 Easy (3×3)</string>
+    <string name="medium_difficulty">🟡 Medium (4×4)</string>
+    <string name="hard_difficulty">🔴 Hard (5×5)</string>
+    <string name="high_score">High Score: %1$d</string>
+
+    <!-- Puzzle Screen -->
+    <string name="puzzle_moves">Moves</string>
+    <string name="puzzle_time">Time</string>
+    <string name="puzzle_menu">Menu</string>
+    <string name="puzzle_hint">💡 Hint</string>
+    <string name="puzzle_shuffle">🔀 Shuffle</string>
+    <string name="puzzle_shuffled">✅ Shuffled</string>
+    <string name="puzzle_congrats">🎉 Congratulations!</string>
+    <string name="puzzle_congrats_new_high_score">🏆 New High Score: %1$d Points!</string>
+    <string name="puzzle_congrats_details">Completed in %1$d moves!\nScore: %2$d</string>
+    <string name="puzzle_new_game">New Game</string>
+    <string name="puzzle_close">Close</string>
+</resources>
