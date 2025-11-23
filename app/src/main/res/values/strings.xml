@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">PuzzleGame</string>
+    <string name="app_name">Puzzle Game</string>
     <string name="easy">Easy (3x3)</string>
     <string name="medium">Medium (4x4)</string>
     <string name="hard">Hard (5x5)</string>

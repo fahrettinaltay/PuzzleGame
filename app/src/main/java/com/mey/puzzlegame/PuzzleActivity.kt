@@ -452,9 +452,6 @@ fun PuzzleScreen(
                         Button(onClick = onMenuClick) { Text("Menü") }
                         ShuffleButton(onClick = onNewGameClick)
                         Button(onClick = { showHintDialog = true }) { Text("💡 İpucu") }
-                        if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-                            Button(onClick = { viewModel.solvePuzzle() }) { Text("Çöz") }
-                        }
                     }
                 }
             }
