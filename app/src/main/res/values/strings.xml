@@ -49,4 +49,16 @@
     <string name="puzzle_congrats_details">%1$d hamlede tamamladın!\nPuan: %2$d</string>
     <string name="puzzle_new_game">Yeni Oyun</string>
     <string name="puzzle_close">Kapat</string>
+
+    <!-- Achievements -->
+    <string name="achievements">🏆 Başarımlar</string>
+    <string name="achievement_unlocked">Yeni Başarım Kazandın!</string>
+    <string name="achievement_first_puzzle_title">Çırak Çözücü</string>
+    <string name="achievement_first_puzzle_desc">İlk bulmacanı tamamla.</string>
+    <string name="achievement_speed_demon_title">Hız Tutkunu</string>
+    <string name="achievement_speed_demon_desc">Bir bulmacayı 60 saniyeden az sürede bitir.</string>
+    <string name="achievement_grandmaster_title">Büyük Usta</string>
+    <string name="achievement_grandmaster_desc">5x5 boyutunda bir bulmacayı tamamla.</string>
+    <string name="achievement_collector_title">Koleksiyoner</string>
+    <string name="achievement_collector_desc">Galeriden bir resimle bulmaca tamamla.</string>
 </resources>

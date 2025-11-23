@@ -16,22 +16,27 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -84,6 +89,7 @@ class StartViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     val selectedImageUri = _selectedImageUri.asStateFlow()
 
     val language = dataStore.language.stateIn(viewModelScope, SharingStarted.Eagerly, "en")
+    val unlockedAchievements = dataStore.unlockedAchievements.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     private var currentPage = 1
     private var totalHits = 0
@@ -260,6 +266,7 @@ fun StartScreen(
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
     val language by viewModel.language.collectAsState()
+    val unlockedAchievements by viewModel.unlockedAchievements.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -280,6 +287,7 @@ fun StartScreen(
     var showNewGameDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showAchievementsDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
 
     if (showNewGameDialog) {
@@ -332,6 +340,14 @@ fun StartScreen(
         )
     }
 
+    if (showAchievementsDialog) {
+        key(language) {
+             AchievementsDialog(
+                unlockedAchievements = unlockedAchievements,
+                onDismiss = { showAchievementsDialog = false })
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -341,62 +357,74 @@ fun StartScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.logo),
-                    contentDescription = "App Logo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            key(language) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = "App Logo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(40.dp).clip(CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Box(contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.Start) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (isDarkTheme) stringResource(R.string.settings_dark_theme_on) else stringResource(R.string.settings_dark_theme_off),
-                            fontSize = 16.sp
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_show_tile_numbers), fontSize = 16.sp)
-                        IconButton(
-                            onClick = { showInfoDialog = true },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = stringResource(id = R.string.settings_show_tile_numbers_info_title),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            key(language) {
+                Box(contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (isDarkTheme) stringResource(R.string.settings_dark_theme_on) else stringResource(R.string.settings_dark_theme_off),
+                                fontSize = 16.sp
                             )
                         }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = moveSoundsEnabled, onCheckedChange = { viewModel.onMoveSoundsChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_move_sounds), fontSize = 16.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = celebrationSoundEnabled, onCheckedChange = { viewModel.onCelebrationSoundChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_celebration_sound), fontSize = 16.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.settings_language), fontSize = 16.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Button(onClick = { showLanguageDialog = true }) {
-                            Text(language.uppercase(Locale.getDefault()))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.settings_show_tile_numbers), fontSize = 16.sp)
+                            IconButton(
+                                onClick = { showInfoDialog = true },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = stringResource(id = R.string.settings_show_tile_numbers_info_title),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = moveSoundsEnabled, onCheckedChange = { viewModel.onMoveSoundsChange() })
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.settings_move_sounds), fontSize = 16.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = celebrationSoundEnabled, onCheckedChange = { viewModel.onCelebrationSoundChange() })
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.settings_celebration_sound), fontSize = 16.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { showLanguageDialog = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(language.uppercase(Locale.getDefault()))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { showAchievementsDialog = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(id = R.string.achievements))
+                            }
                         }
                     }
                 }
@@ -735,6 +763,43 @@ fun LanguageSelectionDialog(
             }
         }
     )
+}
+
+@Composable
+fun AchievementsDialog(unlockedAchievements: Set<String>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(id = R.string.achievements)) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(Achievement.entries) { achievement ->
+                    val isUnlocked = achievement.id in unlockedAchievements
+                    AchievementItem(achievement = achievement, isUnlocked = isUnlocked)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(id = R.string.puzzle_close))
+            }
+        }
+    )
+}
+
+@Composable
+fun AchievementItem(achievement: Achievement, isUnlocked: Boolean) {
+    val alpha = if (isUnlocked) 1f else 0.5f
+    val icon = if (isUnlocked) Icons.Default.CheckCircle else Icons.Default.Lock
+    val iconColor = if (isUnlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.alpha(alpha)) {
+        Icon(imageVector = icon, contentDescription = null, tint = iconColor)
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(text = stringResource(id = achievement.titleResId), fontWeight = FontWeight.Bold)
+            Text(text = stringResource(id = achievement.descriptionResId), style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 @Preview(showBackground = true)

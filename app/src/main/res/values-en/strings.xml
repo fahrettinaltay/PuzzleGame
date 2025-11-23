@@ -49,4 +49,16 @@
     <string name="puzzle_congrats_details">Completed in %1$d moves!\nScore: %2$d</string>
     <string name="puzzle_new_game">New Game</string>
     <string name="puzzle_close">Close</string>
+
+    <!-- Achievements -->
+    <string name="achievements">🏆 Achievements</string>
+    <string name="achievement_unlocked">New Achievement Unlocked!</string>
+    <string name="achievement_first_puzzle_title">Apprentice Solver</string>
+    <string name="achievement_first_puzzle_desc">Complete your first puzzle.</string>
+    <string name="achievement_speed_demon_title">Speed Demon</string>
+    <string name="achievement_speed_demon_desc">Finish a puzzle in under 60 seconds.</string>
+    <string name="achievement_grandmaster_title">Grandmaster</string>
+    <string name="achievement_grandmaster_desc">Complete a 5x5 puzzle.</string>
+    <string name="achievement_collector_title">Collector</string>
+    <string name="achievement_collector_desc">Complete a puzzle using an image from your gallery.</string>
 </resources>
