@@ -404,10 +404,12 @@ fun StartScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            if (selectedImageUri != null) {
-                DifficultySelectionContent(viewModel, selectedImageUri!!, wrappedOnStartPuzzle)
-            } else {
-                ImageSelectionContent(viewModel, wrappedOnStartPuzzle)
+            key(language) {
+                if (selectedImageUri != null) {
+                    DifficultySelectionContent(viewModel, selectedImageUri!!, wrappedOnStartPuzzle)
+                } else {
+                    ImageSelectionContent(viewModel, wrappedOnStartPuzzle)
+                }
             }
         }
     }
