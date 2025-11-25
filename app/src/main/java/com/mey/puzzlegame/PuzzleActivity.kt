@@ -50,8 +50,6 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import com.mey.puzzlegame.ui.theme.PuzzleGameTheme
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -69,9 +67,6 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
     var finalScore by mutableStateOf(0)
     var imageUri by mutableStateOf<String?>(null)
     var isLoading by mutableStateOf(true)
-
-    private val _newlyUnlockedAchievements = MutableStateFlow<List<Achievement>>(emptyList())
-    val newlyUnlockedAchievements = _newlyUnlockedAchievements.asStateFlow()
 
     private var emptyRow by mutableStateOf(0)
     private var emptyCol by mutableStateOf(0)
@@ -127,12 +122,18 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
         isNewHighScore = false
         finalScore = 0
         timeWhenPaused = 0L
-        _newlyUnlockedAchievements.value = emptyList()
         sliceImage(context)
         shuffleBoard()
         startTime = System.currentTimeMillis()
         isLoading = false
         saveState()
+    }
+
+    fun solvePuzzle() {
+        initValues() // Correctly sets the board to the solved state
+        isComplete = true
+        values = values.copyOf() // Ensure UI recomposes
+        calculateAndSaveScore() // Calculate and save the final score
     }
 
     fun saveState() {
@@ -236,40 +237,8 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
                 isNewHighScore = true
                 dataStore.updateHighScore(size, finalScore)
             }
-            checkAndUnlockAchievements(timeElapsed)
             dataStore.clearSavedGame()
         }
-    }
-
-    private suspend fun checkAndUnlockAchievements(timeElapsed: Long) {
-        val unlocked = dataStore.unlockedAchievements.first()
-        val newlyUnlocked = mutableListOf<Achievement>()
-
-        // First Puzzle
-        if (Achievement.FIRST_PUZZLE.id !in unlocked) {
-            dataStore.unlockAchievement(Achievement.FIRST_PUZZLE.id)
-            newlyUnlocked.add(Achievement.FIRST_PUZZLE)
-        }
-
-        // Speed Demon
-        if (timeElapsed < 60 && Achievement.SPEED_DEMON.id !in unlocked) {
-            dataStore.unlockAchievement(Achievement.SPEED_DEMON.id)
-            newlyUnlocked.add(Achievement.SPEED_DEMON)
-        }
-
-        // Grandmaster
-        if (size == 5 && Achievement.GRANDMASTER.id !in unlocked) {
-            dataStore.unlockAchievement(Achievement.GRANDMASTER.id)
-            newlyUnlocked.add(Achievement.GRANDMASTER)
-        }
-
-        // Collector
-        if (imageUri?.startsWith("file://") == true && Achievement.COLLECTOR.id !in unlocked) {
-            dataStore.unlockAchievement(Achievement.COLLECTOR.id)
-            newlyUnlocked.add(Achievement.COLLECTOR)
-        }
-
-        _newlyUnlockedAchievements.value = newlyUnlocked
     }
 
     private fun swap(r1: Int, c1: Int, r2: Int, c2: Int) {
@@ -386,8 +355,6 @@ fun PuzzleScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var showCelebration by remember { mutableStateOf(false) }
 
-    val newlyUnlockedAchievements by viewModel.newlyUnlockedAchievements.collectAsState()
-
     LaunchedEffect(key1 = viewModel.isComplete, key2 = viewModel.isLoading) {
         while (!viewModel.isComplete && !viewModel.isLoading) {
             time = viewModel.getElapsedTime()
@@ -430,7 +397,10 @@ fun PuzzleScreen(
                 winSoundPlayer?.start()
             }
 
+            // Start the visual celebration
             showCelebration = true
+
+            // After the celebration has played for a bit, show the results
             delay(200)
             showBottomSheet = true
         } else {
@@ -505,19 +475,11 @@ fun PuzzleScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(stringResource(id = R.string.puzzle_congrats), style = MaterialTheme.typography.headlineMedium)
-                    if (newlyUnlockedAchievements.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(stringResource(id = R.string.achievement_unlocked), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        newlyUnlockedAchievements.forEach { achievement ->
-                            Text("- ${stringResource(id = achievement.titleResId)}")
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-
                     if (viewModel.isNewHighScore) {
                         Text(
                             stringResource(id = R.string.puzzle_congrats_new_high_score, viewModel.finalScore),
-                            color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.Bold
                         )
                     } else {
                         Text(stringResource(id = R.string.puzzle_congrats_details, viewModel.moves, viewModel.finalScore))

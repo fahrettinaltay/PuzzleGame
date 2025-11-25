@@ -8,7 +8,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -34,7 +33,6 @@ class SettingsDataStore(context: Context) {
         private val HIGH_SCORE_5_KEY = intPreferencesKey("high_score_5")
         private val SAVED_GAME_STATE_KEY = stringPreferencesKey("saved_game_state")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
-        private val UNLOCKED_ACHIEVEMENTS_KEY = stringSetPreferencesKey("unlocked_achievements")
     }
 
     val isDarkTheme: Flow<Boolean> = dataStore.data
@@ -56,17 +54,6 @@ class SettingsDataStore(context: Context) {
     val language: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { preferences -> preferences[LANGUAGE_KEY] ?: Locale.getDefault().language }
-
-    val unlockedAchievements: Flow<Set<String>> = dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
-        .map { preferences -> preferences[UNLOCKED_ACHIEVEMENTS_KEY] ?: emptySet() }
-
-    suspend fun unlockAchievement(achievementId: String) {
-        dataStore.edit {
-            val unlocked = it[UNLOCKED_ACHIEVEMENTS_KEY] ?: emptySet()
-            it[UNLOCKED_ACHIEVEMENTS_KEY] = unlocked + achievementId
-        }
-    }
 
     suspend fun toggleTheme() {
         dataStore.edit { preferences ->
