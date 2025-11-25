@@ -4,6 +4,8 @@
     <!-- Start Screen -->
     <string name="start_new_game_title">Yeni Oyuna Başla?</string>
     <string name="start_new_game_description">Devam eden bir oyununuz var. Yeni bir oyuna başlamak mevcut ilerlemenizi silecek. Emin misiniz?</string>
+    <string name="overwrite_image_game_title">Yeni Resimle Başla?</string>
+    <string name="overwrite_image_game_description">Kaydedilmiş bir oyununuz var. Yeni bir resim seçmek mevcut ilerlemenizi silecek. Emin misiniz?</string>
     <string name="start_new_game_confirm">Yeni Başla</string>
     <string name="cancel">İptal</string>
     <string name="continue_game">Devam Et</string>

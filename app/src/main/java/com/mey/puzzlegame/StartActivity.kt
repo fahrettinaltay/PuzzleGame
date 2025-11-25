@@ -278,9 +278,11 @@ fun StartScreen(
     }
 
     var showNewGameDialog by remember { mutableStateOf(false) }
+    var showOverwriteImageDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
+    var pendingImageUri by remember { mutableStateOf<String?>(null) }
 
     if (showNewGameDialog) {
         AlertDialog(
@@ -300,6 +302,27 @@ fun StartScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showNewGameDialog = false }) { Text(stringResource(id = R.string.cancel)) }
+            }
+        )
+    }
+
+    if (showOverwriteImageDialog) {
+        AlertDialog(
+            onDismissRequest = { showOverwriteImageDialog = false },
+            title = { Text(stringResource(id = R.string.overwrite_image_game_title)) },
+            text = { Text(stringResource(id = R.string.overwrite_image_game_description)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearSavedGame()
+                        viewModel.onImageSelected(pendingImageUri)
+                        showOverwriteImageDialog = false
+                        pendingImageUri = null
+                    }
+                ) { Text(stringResource(id = R.string.start_new_game_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOverwriteImageDialog = false }) { Text(stringResource(id = R.string.cancel)) }
             }
         )
     }
@@ -408,7 +431,18 @@ fun StartScreen(
                 if (selectedImageUri != null) {
                     DifficultySelectionContent(viewModel, selectedImageUri!!, wrappedOnStartPuzzle)
                 } else {
-                    ImageSelectionContent(viewModel, wrappedOnStartPuzzle)
+                    ImageSelectionContent(
+                        viewModel = viewModel,
+                        onStartPuzzle = wrappedOnStartPuzzle,
+                        onPixabayImageClick = { imageUrl ->
+                            if (savedGame != null) {
+                                pendingImageUri = imageUrl
+                                showOverwriteImageDialog = true
+                            } else {
+                                viewModel.onImageSelected(imageUrl)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -418,7 +452,8 @@ fun StartScreen(
 @Composable
 fun ImageSelectionContent(
     viewModel: StartViewModel,
-    onStartPuzzle: (Int, String?) -> Unit
+    onStartPuzzle: (Int, String?) -> Unit,
+    onPixabayImageClick: (String) -> Unit
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
@@ -509,7 +544,7 @@ fun ImageSelectionContent(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable { viewModel.onImageSelected(image.largeImageURL) }
+                            .clickable { onPixabayImageClick(image.largeImageURL) }
                             .border(
                                 width = 3.dp,
                                 color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -538,6 +573,28 @@ fun DifficultySelectionContent(
     val savedGame by viewModel.savedGameState.collectAsState()
     var showNewGameDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
+
+    if (showNewGameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewGameDialog = false },
+            title = { Text(stringResource(id = R.string.start_new_game_title)) },
+            text = { Text(stringResource(id = R.string.start_new_game_description)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearSavedGame()
+                        pendingNewGameSize?.let { size ->
+                            onStartPuzzle(size, selectedImageUri)
+                        }
+                        showNewGameDialog = false
+                    }
+                ) { Text(stringResource(id = R.string.start_new_game_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewGameDialog = false }) { Text(stringResource(id = R.string.cancel)) }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
