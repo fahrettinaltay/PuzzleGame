@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="PuzzleActivity">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-11-16T19:40:17.846711Z">
+        <DropdownSelection timestamp="2025-11-26T21:45:22.943168Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=/Users/fahrettinaltay/.android/avd/Medium_Phone.avd" />
