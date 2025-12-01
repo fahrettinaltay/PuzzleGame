@@ -39,7 +39,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
@@ -160,7 +159,7 @@ class PuzzleViewModel(private val dataStore: SettingsDataStore) : ViewModel() {
             val request = ImageRequest.Builder(context).data(imageUri).allowHardware(false).build()
             val result = context.imageLoader.execute(request).drawable
             val sourceBitmap = (result as BitmapDrawable).bitmap
-            val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, 1200, 1200, true)
+            val scaledBitmap = Bitmap.createScaledBitmap(sourceBitmap, 600, 600, true)
             val pieces = mutableListOf<ImageBitmap>()
             val pieceSize = scaledBitmap.width / size
             pieces.add(ImageBitmap(1, 1))
@@ -424,7 +423,8 @@ fun PuzzleScreen(
                         .fillMaxSize()
                         .padding(16.dp)
                         .systemBarsPadding(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -445,17 +445,9 @@ fun PuzzleScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        PuzzleBoard(viewModel, showTileNumbers)
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
+                    Spacer(modifier = Modifier.height(24.dp))
+                    PuzzleBoard(viewModel, showTileNumbers)
+                    Spacer(modifier = Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = onMenuClick) { Text(stringResource(id = R.string.puzzle_menu)) }
                         ShuffleButton(onClick = onNewGameClick)
@@ -613,66 +605,61 @@ fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
     }
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun PuzzleBoard(viewModel: PuzzleViewModel, showTileNumbers: Boolean) {
     BoxWithConstraints(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(8.dp))
     ) {
-        val boardSize = min(maxWidth, maxHeight)
+        val tileSize = maxWidth / viewModel.size
 
-        Box(
-            Modifier
-                .size(boardSize)
-                .clip(RoundedCornerShape(8.dp))
-        ) {
-            val tileSize = boardSize / viewModel.size
-
-            val tilePositions = remember(viewModel.values) {
-                Array(viewModel.size * viewModel.size + 1) { 0 to 0 }.also { array ->
-                    viewModel.values.forEachIndexed { r, row ->
-                        row.forEachIndexed { c, number ->
-                            if (number >= 0 && number < array.size) {
-                                array[number] = r to c
-                            }
+        val tilePositions = remember(viewModel.values) {
+            Array(viewModel.size * viewModel.size + 1) { 0 to 0 }.also { array ->
+                viewModel.values.forEachIndexed { r, row ->
+                    row.forEachIndexed { c, number ->
+                        if (number >= 0 && number < array.size) {
+                            array[number] = r to c
                         }
                     }
                 }
             }
+        }
 
-            if (viewModel.imagePieces.isNotEmpty()) {
-                val hasEmptyTile = viewModel.values.flatten().any { it == 0 }
-                val lastTile = viewModel.size * viewModel.size
-                val range = if (hasEmptyTile) (1 until lastTile) else (1..lastTile)
+        if (viewModel.imagePieces.isNotEmpty()) {
+            val hasEmptyTile = viewModel.values.flatten().any { it == 0 }
+            val lastTile = viewModel.size * viewModel.size
+            val range = if (hasEmptyTile) (1 until lastTile) else (1..lastTile)
 
-                range.forEach { number ->
-                    val (r, c) = tilePositions[number]
-                    if (number >= viewModel.imagePieces.size) return@forEach
-                    val imageBitmap = viewModel.imagePieces[number]
+            range.forEach { number ->
+                val (r, c) = tilePositions[number]
+                if (number >= viewModel.imagePieces.size) return@forEach
+                val imageBitmap = viewModel.imagePieces[number]
 
-                    val animatedX by animateDpAsState(
-                        targetValue = tileSize * c,
-                        animationSpec = tween(300),
-                        label = "tile_x_$number"
-                    )
-                    val animatedY by animateDpAsState(
-                        targetValue = tileSize * r,
-                        animationSpec = tween(300),
-                        label = "tile_y_$number"
-                    )
+                val animatedX by animateDpAsState(
+                    targetValue = tileSize * c,
+                    animationSpec = tween(300),
+                    label = "tile_x_$number"
+                )
+                val animatedY by animateDpAsState(
+                    targetValue = tileSize * r,
+                    animationSpec = tween(300),
+                    label = "tile_y_$number"
+                )
 
-                    PuzzleTile(
-                        modifier = Modifier
-                            .offset(x = animatedX, y = animatedY)
-                            .width(tileSize)
-                            .height(tileSize)
-                            .padding(2.dp),
-                        imageBitmap = imageBitmap,
-                        number = number,
-                        showNumber = showTileNumbers,
-                        onClick = { viewModel.onTileClick(r, c) }
-                    )
-                }
+                PuzzleTile(
+                    modifier = Modifier
+                        .offset(x = animatedX, y = animatedY)
+                        .width(tileSize)
+                        .height(tileSize)
+                        .padding(2.dp),
+                    imageBitmap = imageBitmap,
+                    number = number,
+                    showNumber = showTileNumbers,
+                    onClick = { viewModel.onTileClick(r, c) }
+                )
             }
         }
     }
