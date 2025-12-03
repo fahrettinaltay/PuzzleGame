@@ -29,6 +29,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -213,6 +216,7 @@ class StartViewModelFactory(private val dataStore: SettingsDataStore) : ViewMode
     }
 }
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 class StartActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -221,6 +225,7 @@ class StartActivity : ComponentActivity() {
         val dataStore = SettingsDataStore(this)
 
         setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
             val language by dataStore.language.collectAsState(initial = Locale.getDefault().language)
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
 
@@ -230,10 +235,10 @@ class StartActivity : ComponentActivity() {
             config.setLocale(locale)
             LocalContext.current.resources.updateConfiguration(config, LocalContext.current.resources.displayMetrics)
 
-
             PuzzleGameTheme(darkTheme = isDark) {
                 StartScreen(
                     viewModelFactory = StartViewModelFactory(dataStore),
+                    widthSizeClass = windowSizeClass.widthSizeClass,
                     onStartPuzzle = { size, imageUri ->
                         val intent = Intent(this, PuzzleActivity::class.java).apply {
                             putExtra("SIZE", size)
@@ -250,16 +255,12 @@ class StartActivity : ComponentActivity() {
 @Composable
 fun StartScreen(
     viewModelFactory: StartViewModelFactory,
+    widthSizeClass: WindowWidthSizeClass,
     onStartPuzzle: (Int, String?) -> Unit,
     viewModel: StartViewModel = viewModel(factory = viewModelFactory)
 ) {
-    val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
-    val showTileNumbers by viewModel.showTileNumbers.collectAsState(initial = false)
-    val moveSoundsEnabled by viewModel.moveSoundsEnabled.collectAsState(initial = true)
-    val celebrationSoundEnabled by viewModel.celebrationSoundEnabled.collectAsState(initial = true)
     val selectedImageUri by viewModel.selectedImageUri.collectAsState()
     val savedGame by viewModel.savedGameState.collectAsState()
-    val language by viewModel.language.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -274,13 +275,11 @@ fun StartScreen(
 
     val wrappedOnStartPuzzle = { size: Int, imageUri: String? ->
         onStartPuzzle(size, imageUri)
-        viewModel.onImageSelected(null)
+        viewModel.onImageSelected(null) // Clear selection after starting
     }
 
     var showNewGameDialog by remember { mutableStateOf(false) }
     var showOverwriteImageDialog by remember { mutableStateOf(false) }
-    var showInfoDialog by remember { mutableStateOf(false) }
-    var showLanguageDialog by remember { mutableStateOf(false) }
     var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
     var pendingImageUri by remember { mutableStateOf<String?>(null) }
 
@@ -327,6 +326,121 @@ fun StartScreen(
         )
     }
 
+    val handleDifficultyClick = { size: Int ->
+        if (savedGame != null) {
+            pendingNewGameSize = size
+            showNewGameDialog = true
+        } else {
+            wrappedOnStartPuzzle(size, selectedImageUri)
+        }
+    }
+
+    val isTablet = widthSizeClass != WindowWidthSizeClass.Compact
+    val isImageSelected = selectedImageUri != null
+
+    Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+        key(viewModel.language.collectAsState().value) { // Recompose on language change
+            if (isTablet && isImageSelected) {
+                // Tablet layout with image selected
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp)
+                ) {
+                    // Left Pane: Image Preview
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        ImagePreview(
+                            selectedImageUri = selectedImageUri,
+                            onChangeImage = { viewModel.onImageSelected(null) }
+                        )
+                    }
+                    // Right Pane: All other content
+                    Column(
+                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        AppHeader()
+                        Spacer(Modifier.height(16.dp))
+                        SettingsPane(viewModel)
+                        Spacer(Modifier.height(24.dp))
+                        Text(stringResource(id = R.string.step_2_select_difficulty), style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(16.dp))
+                        DifficultyButtons(viewModel, handleDifficultyClick)
+                    }
+                }
+            } else {
+                // Phone layout OR Tablet layout without image selected
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    AppHeader()
+                    Spacer(Modifier.height(16.dp))
+                    SettingsPane(viewModel)
+                    Spacer(Modifier.height(24.dp))
+
+                    if (isImageSelected) {
+                        ImagePreview(
+                            selectedImageUri = selectedImageUri,
+                            onChangeImage = { viewModel.onImageSelected(null) }
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Text(stringResource(id = R.string.step_2_select_difficulty), style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(16.dp))
+                        DifficultyButtons(viewModel, handleDifficultyClick)
+                    } else {
+                        ImageSelectionContent(
+                            viewModel = viewModel,
+                            onStartPuzzle = wrappedOnStartPuzzle,
+                            onPixabayImageClick = { imageUrl ->
+                                if (savedGame != null) {
+                                    pendingImageUri = imageUrl
+                                    showOverwriteImageDialog = true
+                                } else {
+                                    viewModel.onImageSelected(imageUrl)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppHeader() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.logo),
+            contentDescription = "App Logo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(40.dp).clip(CircleShape)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun SettingsPane(viewModel: StartViewModel) {
+    val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
+    val showTileNumbers by viewModel.showTileNumbers.collectAsState(initial = false)
+    val moveSoundsEnabled by viewModel.moveSoundsEnabled.collectAsState(initial = true)
+    val celebrationSoundEnabled by viewModel.celebrationSoundEnabled.collectAsState(initial = true)
+    val language by viewModel.language.collectAsState()
+    var showInfoDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
+
     if (showInfoDialog) {
         AlertDialog(
             onDismissRequest = { showInfoDialog = false },
@@ -346,7 +460,6 @@ fun StartScreen(
             }
         )
     }
-
     if (showLanguageDialog) {
         LanguageSelectionDialog(
             currentLanguage = language,
@@ -355,94 +468,46 @@ fun StartScreen(
         )
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.logo),
-                    contentDescription = "App Logo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(40.dp).clip(CircleShape)
+    Box(contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.Start) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (isDarkTheme) stringResource(R.string.settings_dark_theme_on) else stringResource(R.string.settings_dark_theme_off),
+                    fontSize = 16.sp
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold)
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Box(contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.Start) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = isDarkTheme, onCheckedChange = { viewModel.onThemeChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (isDarkTheme) stringResource(R.string.settings_dark_theme_on) else stringResource(R.string.settings_dark_theme_off),
-                            fontSize = 16.sp
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_show_tile_numbers), fontSize = 16.sp)
-                        IconButton(
-                            onClick = { showInfoDialog = true },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = stringResource(id = R.string.settings_show_tile_numbers_info_title),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = moveSoundsEnabled, onCheckedChange = { viewModel.onMoveSoundsChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_move_sounds), fontSize = 16.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(checked = celebrationSoundEnabled, onCheckedChange = { viewModel.onCelebrationSoundChange() })
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_celebration_sound), fontSize = 16.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.settings_language), fontSize = 16.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Button(onClick = { showLanguageDialog = true }) {
-                            Text(language.uppercase(Locale.getDefault()))
-                        }
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = showTileNumbers, onCheckedChange = { viewModel.onShowTileNumbersChange() })
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.settings_show_tile_numbers), fontSize = 16.sp)
+                IconButton(
+                    onClick = { showInfoDialog = true },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = stringResource(id = R.string.settings_show_tile_numbers_info_title),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            key(language) {
-                if (selectedImageUri != null) {
-                    DifficultySelectionContent(viewModel, selectedImageUri!!, wrappedOnStartPuzzle)
-                } else {
-                    ImageSelectionContent(
-                        viewModel = viewModel,
-                        onStartPuzzle = wrappedOnStartPuzzle,
-                        onPixabayImageClick = { imageUrl ->
-                            if (savedGame != null) {
-                                pendingImageUri = imageUrl
-                                showOverwriteImageDialog = true
-                            } else {
-                                viewModel.onImageSelected(imageUrl)
-                            }
-                        }
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = moveSoundsEnabled, onCheckedChange = { viewModel.onMoveSoundsChange() })
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.settings_move_sounds), fontSize = 16.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = celebrationSoundEnabled, onCheckedChange = { viewModel.onCelebrationSoundChange() })
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.settings_celebration_sound), fontSize = 16.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.settings_language), fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { showLanguageDialog = true }) {
+                    Text(language.uppercase(Locale.getDefault()))
                 }
             }
         }
@@ -481,7 +546,7 @@ fun ImageSelectionContent(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (savedGame != null) {
@@ -514,48 +579,50 @@ fun ImageSelectionContent(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 120.dp),
-            modifier = Modifier.weight(1f),
-            state = gridState,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (isLoading) {
-                item(span = { GridItemSpan(this.maxLineSpan) }) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                }
-            } else if (searchResults.isEmpty() && searchQuery.length > 2) {
-                item(span = { GridItemSpan(this.maxLineSpan) }) {
-                    Text(
-                        text = stringResource(id = R.string.search_no_results, searchQuery),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                itemsIndexed(searchResults) { _, image ->
-                    AsyncImage(
-                        model = image.webformatURL,
-                        contentDescription = "Pixabay Image",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onPixabayImageClick(image.largeImageURL) }
-                            .border(
-                                width = 3.dp,
-                                color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                    )
-                }
-                if (isLoadingMore) {
+        // Use a fixed height for the grid to avoid nested scrolling issues
+        Box(modifier = Modifier.heightIn(max = 500.dp)) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 120.dp),
+                state = gridState,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (isLoading) {
                     item(span = { GridItemSpan(this.maxLineSpan) }) {
-                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
+                        }
+                    }
+                } else if (searchResults.isEmpty() && searchQuery.length > 2) {
+                    item(span = { GridItemSpan(this.maxLineSpan) }) {
+                        Text(
+                            text = stringResource(id = R.string.search_no_results, searchQuery),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    itemsIndexed(searchResults) { _, image ->
+                        AsyncImage(
+                            model = image.webformatURL,
+                            contentDescription = "Pixabay Image",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onPixabayImageClick(image.largeImageURL) }
+                                .border(
+                                    width = 3.dp,
+                                    color = if (selectedImageUri == image.largeImageURL) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                        )
+                    }
+                    if (isLoadingMore) {
+                        item(span = { GridItemSpan(this.maxLineSpan) }) {
+                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
                         }
                     }
                 }
@@ -565,44 +632,11 @@ fun ImageSelectionContent(
 }
 
 @Composable
-fun DifficultySelectionContent(
-    viewModel: StartViewModel,
-    selectedImageUri: String,
-    onStartPuzzle: (Int, String?) -> Unit,
-) {
-    val savedGame by viewModel.savedGameState.collectAsState()
-    var showNewGameDialog by remember { mutableStateOf(false) }
-    var pendingNewGameSize by remember { mutableStateOf<Int?>(null) }
-
-    if (showNewGameDialog) {
-        AlertDialog(
-            onDismissRequest = { showNewGameDialog = false },
-            title = { Text(stringResource(id = R.string.start_new_game_title)) },
-            text = { Text(stringResource(id = R.string.start_new_game_description)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearSavedGame()
-                        pendingNewGameSize?.let { size ->
-                            onStartPuzzle(size, selectedImageUri)
-                        }
-                        showNewGameDialog = false
-                    }
-                ) { Text(stringResource(id = R.string.start_new_game_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNewGameDialog = false }) { Text(stringResource(id = R.string.cancel)) }
-            }
-        )
-    }
-
+fun ImagePreview(selectedImageUri: String?, onChangeImage: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-
         Text(stringResource(id = R.string.step_1_select_image), style = MaterialTheme.typography.titleLarge)
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -618,45 +652,37 @@ fun DifficultySelectionContent(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        Button(onClick = { viewModel.onImageSelected(null) }) {
+        Button(onClick = onChangeImage) {
             Text(stringResource(id = R.string.change_image))
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(24.dp))
+@Composable
+private fun DifficultyButtons(viewModel: StartViewModel, onDifficultyClick: (Int) -> Unit) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        val easyHighScore by viewModel.getHighScore(3).collectAsState()
+        val mediumHighScore by viewModel.getHighScore(4).collectAsState()
+        val hardHighScore by viewModel.getHighScore(5).collectAsState()
 
-        Text(stringResource(id = R.string.step_2_select_difficulty), style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        val handleDifficultyClick = { size: Int ->
-            if (savedGame != null) {
-                pendingNewGameSize = size
-                showNewGameDialog = true
-            } else {
-                onStartPuzzle(size, selectedImageUri)
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            val easyHighScore by viewModel.getHighScore(3).collectAsState()
-            val mediumHighScore by viewModel.getHighScore(4).collectAsState()
-            val hardHighScore by viewModel.getHighScore(5).collectAsState()
-
-            DifficultyButton(
-                text = stringResource(id = R.string.easy_difficulty),
-                score = easyHighScore,
-                enabled = true,
-                onClick = { handleDifficultyClick(3) })
-            DifficultyButton(
-                text = stringResource(id = R.string.medium_difficulty),
-                score = mediumHighScore,
-                enabled = true,
-                onClick = { handleDifficultyClick(4) })
-            DifficultyButton(
-                text = stringResource(id = R.string.hard_difficulty),
-                score = hardHighScore,
-                enabled = true,
-                onClick = { handleDifficultyClick(5) })
-        }
+        DifficultyButton(
+            text = stringResource(id = R.string.easy_difficulty),
+            score = easyHighScore,
+            enabled = true,
+            onClick = { onDifficultyClick(3) })
+        DifficultyButton(
+            text = stringResource(id = R.string.medium_difficulty),
+            score = mediumHighScore,
+            enabled = true,
+            onClick = { onDifficultyClick(4) })
+        DifficultyButton(
+            text = stringResource(id = R.string.hard_difficulty),
+            score = hardHighScore,
+            enabled = true,
+            onClick = { onDifficultyClick(5) })
     }
 }
 
@@ -794,11 +820,40 @@ fun LanguageSelectionDialog(
     )
 }
 
-@Preview(showBackground = true)
+@Preview(showBackground = true, widthDp = 1024, name = "Tablet Preview")
 @Composable
-fun StartScreenPreview() {
+fun StartScreenTabletPreview() {
+    val context = LocalContext.current
+    val dummyDataStore = remember { SettingsDataStore(context) }
+    val factory = remember { StartViewModelFactory(dummyDataStore) }
+    val viewModel = viewModel<StartViewModel>(factory = factory)
+    
+    // Simulate image selected state
+    LaunchedEffect(Unit) {
+        viewModel.onImageSelected("https://dummyimage.com/600x400/000/fff.png&text=Sample")
+    }
+
     PuzzleGameTheme {
-        val dummyDataStore = SettingsDataStore(LocalContext.current)
-        // StartScreen(viewModelFactory = StartViewModelFactory(dummyDataStore, "en"), onStartPuzzle = { _, _ -> })
+        StartScreen(
+            viewModelFactory = factory,
+            widthSizeClass = WindowWidthSizeClass.Expanded,
+            onStartPuzzle = { _, _ -> }
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Phone Preview")
+@Composable
+fun StartScreenPhonePreview() {
+    val context = LocalContext.current
+    val dummyDataStore = remember { SettingsDataStore(context) }
+    val factory = remember { StartViewModelFactory(dummyDataStore) }
+    
+    PuzzleGameTheme {
+        StartScreen(
+            viewModelFactory = factory,
+            widthSizeClass = WindowWidthSizeClass.Compact,
+            onStartPuzzle = { _, _ -> }
+        )
     }
 }

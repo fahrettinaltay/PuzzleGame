@@ -424,7 +424,6 @@ fun PuzzleScreen(
                         .padding(16.dp)
                         .systemBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -445,9 +444,15 @@ fun PuzzleScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
-                    PuzzleBoard(viewModel, showTileNumbers)
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PuzzleBoard(viewModel, showTileNumbers)
+                    }
+
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = onMenuClick) { Text(stringResource(id = R.string.puzzle_menu)) }
                         ShuffleButton(onClick = onNewGameClick)
@@ -610,7 +615,7 @@ fun HintDialog(imageUri: String?, onDismiss: () -> Unit) {
 fun PuzzleBoard(viewModel: PuzzleViewModel, showTileNumbers: Boolean) {
     BoxWithConstraints(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxHeight()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
     ) {
