@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Puzzle Game</string>
+    <string name="app_name">BlockShift</string>
 
     <!-- Start Screen -->
     <string name="start_new_game_title">Start New Game?</string>
@@ -25,7 +25,7 @@
     <string name="settings_language">Language</string>
 
     <!-- Image Selection -->
-    <string name="step_1_select_image">1. Select an Image</string>g>
+    <string name="step_1_select_image">1. Select an Image</string>
     <string name="search_pixabay">Search images on Pixabay…</string>
     <string name="select_from_gallery">🖼️ Or Select From Gallery</string>
     <string name="search_no_results">"No results found for '%1$s'."</string>
@@ -48,8 +48,7 @@
     <string name="puzzle_shuffled">✅ Shuffled</string>
     <string name="puzzle_congrats">🎉 Congratulations!</string>
     <string name="puzzle_congrats_new_high_score">🏆 New High Score: %1$d Points!</string>
-    <string name="puzzle_congrats_details">Completed in %1$d moves!
-Score: %2$d</string>
+    <string name="puzzle_congrats_details">Completed in %1$d moves!\nScore: %2$d</string>
     <string name="puzzle_new_game">New Game</string>
     <string name="puzzle_close">Close</string>
 </resources>

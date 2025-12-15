@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Puzzle Game</string>
+    <string name="app_name">BlockShift</string>
 
     <!-- Start Screen -->
     <string name="start_new_game_title">Yeni Oyuna Başla?</string>

@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -21,6 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -40,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -279,13 +282,14 @@ class PuzzleViewModelFactory(private val dataStore: SettingsDataStore) : ViewMod
     }
 }
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 class PuzzleActivity : ComponentActivity() {
     private lateinit var viewModel: PuzzleViewModel
     private lateinit var dataStore: SettingsDataStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val size = intent.getIntExtra("SIZE", 3).coerceAtLeast(3)
         val imageUriString = intent.getStringExtra("IMAGE_URI")
 
@@ -298,6 +302,7 @@ class PuzzleActivity : ComponentActivity() {
         val viewModelFactory = PuzzleViewModelFactory(dataStore)
 
         setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
             val isDark by dataStore.isDarkTheme.collectAsState(initial = isSystemInDarkTheme())
             val showTileNumbers by dataStore.showTileNumbers.collectAsState(initial = false)
             val moveSoundsEnabled by dataStore.moveSoundsEnabled.collectAsState(initial = true)
@@ -314,6 +319,7 @@ class PuzzleActivity : ComponentActivity() {
                     showTileNumbers = showTileNumbers,
                     moveSoundsEnabled = moveSoundsEnabled,
                     celebrationSoundEnabled = celebrationSoundEnabled,
+                    widthSizeClass = windowSizeClass.widthSizeClass,
                     onMenuClick = {
                         finish() // onStop will save the state
                     },
@@ -342,6 +348,7 @@ fun PuzzleScreen(
     showTileNumbers: Boolean,
     moveSoundsEnabled: Boolean,
     celebrationSoundEnabled: Boolean,
+    widthSizeClass: WindowWidthSizeClass,
     onMenuClick: () -> Unit,
     onNewGameClick: () -> Unit
 ) {
@@ -410,6 +417,7 @@ fun PuzzleScreen(
     }
 
     val sheetState = rememberModalBottomSheetState()
+    val isLandscape = widthSizeClass != WindowWidthSizeClass.Compact
 
     Box(Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -417,12 +425,55 @@ fun PuzzleScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
+            } else if (isLandscape) {
+                // Landscape layout
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeDrawingPadding()
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PuzzleBoard(viewModel, showTileNumbers)
+                    }
+
+                    Column(
+                        modifier = Modifier.width(200.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)
+                    ) {
+                        StatCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            label = stringResource(id = R.string.puzzle_moves),
+                            value = viewModel.moves.toString(),
+                            icon = Icons.Default.SyncAlt
+                        )
+                        StatCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            label = stringResource(id = R.string.puzzle_time),
+                            value = formattedTime,
+                            icon = Icons.Default.Timer
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = onMenuClick, modifier = Modifier.fillMaxWidth()) { Text(stringResource(id = R.string.puzzle_menu)) }
+                        ShuffleButton(onClick = onNewGameClick)
+                        Button(onClick = { showHintDialog = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(id = R.string.puzzle_hint)) }
+                    }
+                }
             } else {
+                // Portrait layout
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
-                        .systemBarsPadding(),
+                        .safeDrawingPadding()
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Row(
@@ -474,8 +525,7 @@ fun PuzzleScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp)
-                        .navigationBarsPadding(),
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
